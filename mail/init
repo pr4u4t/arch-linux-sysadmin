@@ -1,0 +1,166 @@
+#!/bin/bash
+
+function scriptDir
+{       
+        SOURCE="${BASH_SOURCE[0]}"
+        
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located      
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Deploy mail server"
+}
+
+#if [ $# != 1  ]; then
+#        echo -e "Invalid number of arguments should be:$0 vhost"
+#        errorOut
+#fi
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg "$@"
+
+user=`getVariable "${sdir}/conf" "MAIL_USER" "user"` || errorOut "Failed to get owner user"
+group=`getVariable "${sdir}/conf" "MAIL_GROUP" "group"` || errorOut "Failed to get owner group"
+userid=`getVariable "${sdir}/conf" "MAIL_USER_ID" "integer"` || errorOut "Failed to get owner user id"
+groupid=`getVariable "${sdir}/conf" "MAIL_GROUP_ID" "integer"` || errorOut "Failed to get group owner id"
+mailHome=`getVariable "${sdir}/conf" "MAIL_HOME" "path"` || errorOut "Failed to get mail directory location"
+mailDBEngine=`getVariable "${sdir}/conf" "MAIL_DB_ENGINE" "alpha"` || errorOut "Failed to get database type"
+maildb=`getVariable "${sdir}/conf" "MAIL_DB" "mixed"` || errorOut "Failed to get mail database name"
+maildbUser=`getVariable "${sdir}/conf" "MAIL_DB_USER" "mixed"` || errorOut "Failed to get mail database user"
+maildbPass=`getVariable "${sdir}/conf" "MAIL_DB_PASS" "mixed"` || errorOut "Failed to get mail database password"
+maildbHost=`getVariable "${sdir}/conf" "MAIL_DB_HOST" "ip"` || errorOut "Failed to get database ip address"
+maildbPort=`getVariable "${sdir}/conf" "MAIL_DB_PORT" "port"` || errorOut "Failed to get database port"
+
+authMechanism=`getVariable "${sdir}/conf" "AUTH_MECHANISM" "custom" "[A-Z0-9-]+"` || errorOut "Failed to get password scheme"
+mailCert=`getVariable "${sdir}/conf" "VMAIL_CERT" "path"` || errorOut "Failed to get SSL cert location"
+mailKey=`getVariable "${sdir}/conf" "VMAIL_KEY" "path"` || errorOut "Failed to get SSL private key location"
+doveProto=`getVariable "${sdir}/conf" "DOVE_PROTO" "custom" "(imap)|(pop3)"` || errorOut "Failed to get dovecot listen protocols"
+
+postfixLoc=`getVariable "${sdir}/conf" "POSTFIX_DIR" "path"` || errorOut "Failed to get postfix configuration location"
+dovecotLoc=`getVariable "${sdir}/conf" "DOVECOT_DIR" "path"` || errorOut "Failed to get dovecot configuration location"
+
+systemdLoc=`getVariable "${sdir}/conf" "SERVICE_LOCATION" "path"` || errorOut "Failed to get systemd service location"
+clamavLoc=`getVariable "${sdir}/conf" "CLAMAV_LOCATION" "path"` || errorOut "Failed to get clamav location"
+relayhost=`getVariable "${sdir}/conf" "RELAY_HOST" "custom" "\[[0-9A-Za-z\.]+\]|[0-9A-Za-z\.]+"` || errorOut "Failed to get relayhost"
+
+#adminEmail=`getVariable "${sdir}/conf" "ADMIN_EMAIL" "custom" "[a-z0-9]+(@)[a-z0-9]+(\.)[a-z]+"`
+#mainDomain=`getVariable "${sdir}/conf" "MAIN_DOMAIN" "custom" "([a-z0-9]+\.)+[a-z]+"`
+#smtpPort=`getVariable "${sdir}/conf" "SMTP_PORT" "integer"`
+#dovecotCrypt=`getVariable "${sdir}/conf" "DOVECOT_CRYPT" "custom" "(dovecot:)[A-Z0-9-]+"`
+#dovecotLocation=`getVariable "${sdir}/conf" "DOVECOT_LOCATION" "custom" "[/A-Za-z0-9]+[[:blank:]][a-z]+"`
+
+#postfxAdminHost=`getVariable "${sdir}/conf" "POSTFIX_ADMIN_VHOST" "dns"`
+
+#echo "${user}"
+#echo "${group}"
+#echo "${userid}"
+#echo "${groupid}"
+#echo "${mailHome}"
+#echo "${mailDBEngine}"
+#echo "${maildb}"
+#echo "${maildbUser}"
+#echo "${maildbPass}"
+#echo "${authMechanism}"
+#echo "${mailCert}"
+#echo "${mailKey}"
+#echo "${doveProto}"
+#echo "${adminEmail}"
+#echo "${mainDomain}"
+#echo "${smtpPort}"
+#echo "${dovecotCrypt}"
+#echo "${dovecotLocation}"
+#echo "${postfxAdminHost}"
+
+#getUserById "${userid}" && errorOut "vmail user id already exist"
+#getGroupById "${groupid}" && errorOut "vmail group id already exist"
+#checkUserExist "${user}" && errorOut "vmail user already exist"
+#checkGroupExist "${group}" && errorOut "vmail user already exist"
+
+#echo "GroupID:${groupid} Group:${group}"
+#groupadd -g "${groupid}" "${group}" || errorOut
+#echo "UserID:${userid} User:${user}" 
+#useradd -u "${userid}" -g "${group}" -s /usr/bin/nologin -d "${mailHome}" -m "${user}" || errorOut
+
+echo -e "Copying & setting postfix files"
+
+copy "${sdir}/main.cf" "${postfixLoc}/main.cf" || errorOut "Failed to copy ${sdir}/main.cf to ${postfixLoc}"
+setVariable "${postfixLoc}/main.cf" "MAIL_DB_ENGINE" "${mailDBEngine}" || errorOut "Failed to set database type in main.cf"
+setVariable "${postfixLoc}/main.cf" "MAIL_HOME" "${mailHome}" || errorOut "Failed to set mail directory location in main.cf"
+setVariable "${postfixLoc}/main.cf" "MAIL_USER_ID" "${userid}" || errorOut "Failed to set mail user id in main.cf"
+setVariable "${postfixLoc}/main.cf" "MAIL_GROUP_ID" "${groupid}" || errorOut "Failed to set mail group id in main.cf"
+setVariable "${postfixLoc}/main.cf" "POSTFIX_DIR" "${postfixLoc}" || errorOut "Failed to set postfix directory in main.cf"
+setVariable "${postfixLoc}/main.cf" "RELAY_HOST" "${relayhost}" || errorOut "Failed to set relay host in main.cf"
+
+copy "${sdir}/virtual_alias_maps.cf" "${postfixLoc}/virtual_alias_maps.cf" || errorOut "Failed to copy ${sdir}/virtual_alias_maps.cf to ${postfixLoc}"
+setVariable "${postfixLoc}/virtual_alias_maps.cf" "MAIL_DB_USER" "${maildbUser}" || errorOut "Failed to set database user in virtual_alias_maps.cf"
+setVariable "${postfixLoc}/virtual_alias_maps.cf" "MAIL_DB_PASS" "${maildbPass}" || errorOut "Failed to set database password in virtual_alias_maps.cf"
+setVariable "${postfixLoc}/virtual_alias_maps.cf" "MAIL_DB_HOST" "${maildbHost}" || errorOut "Failed to set database host in virtual_alias_maps.cf"
+setVariable "${postfixLoc}/virtual_alias_maps.cf" "MAIL_DB_PORT" "${maildbPort}" || errorOut "Failed to set database port in virtual_alias_maps.cf"
+setVariable "${postfixLoc}/virtual_alias_maps.cf" "MAIL_DB" "${maildb}" || errorOut "Failed to set database name in virtual_alias_maps.cf"
+
+copy "${sdir}/virtual_mailbox_domains.cf" "${postfixLoc}/virtual_mailbox_domains.cf" || errorOut "Failed to copy ${sdir}/virtual_mailbox_domains.cf to ${postfixLoc}"
+setVariable "${postfixLoc}/virtual_mailbox_domains.cf" "MAIL_DB_USER" "${maildbUser}" || errorOut "Failed to set database user in virtual_mailbox_domains.cf" 
+setVariable "${postfixLoc}/virtual_mailbox_domains.cf" "MAIL_DB_PASS" "${maildbPass}" || errorOut "Failed to set databse password in virtual_mailbox_domains.cf"
+setVariable "${postfixLoc}/virtual_mailbox_domains.cf" "MAIL_DB_HOST" "${maildbHost}" || errorOut "Failed to set database host in virtual_mailbox_domains.cf"
+setVariable "${postfixLoc}/virtual_mailbox_domains.cf" "MAIL_DB_PORT" "${maildbPort}" || errorOut "Failed to set database port in virtual_mailbox_domains.cf"
+setVariable "${postfixLoc}/virtual_mailbox_domains.cf" "MAIL_DB" "${maildb}" || errorOut "Failed to set database name in virtual_mailbox_domains.cf"
+
+copy "${sdir}/virtual_mailbox_maps.cf" "${postfixLoc}/virtual_mailbox_maps.cf" || errorOut "Failed to copy ${sdir}/virtual_mailbox_maps.cf to ${postfixLoc}"
+setVariable "${postfixLoc}/virtual_mailbox_maps.cf" "MAIL_DB_USER" "${maildbUser}" || errorOut "Failed to set database user in virtual_mailbox_maps.cf"
+setVariable "${postfixLoc}/virtual_mailbox_maps.cf" "MAIL_DB_PASS" "${maildbPass}" || errorOut "Failed to set database password in virtual_mailbox_maps.cf"
+setVariable "${postfixLoc}/virtual_mailbox_maps.cf" "MAIL_DB_HOST" "${maildbHost}" || errorOut "Failed to set database host in virtual_mailbox_maps.cf"
+setVariable "${postfixLoc}/virtual_mailbox_maps.cf" "MAIL_DB_PORT" "${maildbPort}" || errorOut "Failed to set database port in virtual_mailbox_maps.cf"
+setVariable "${postfixLoc}/virtual_mailbox_maps.cf" "MAIL_DB" "${maildb}" || errorOut "Failed to set database name in virtual_mailbox_maps.cf"
+
+echo -e "Copying & setting dovecot files"
+
+copy "${sdir}/dovecot.conf" "${dovecotLoc}/dovecot.conf" || errorOut "Failed to copy dovecot.conf"
+setVariable "${dovecotLoc}/dovecot.conf" "DOVE_PROTO" "${doveProto}" || errorOut "Failed to set protocols in dovecot.conf"
+setVariable "${dovecotLoc}/dovecot.conf" "AUTH_MECHANISM" "${authMechanism}" || errorOut "Failed to set authentication mechanisms in dovecot.conf"
+setVariable "${dovecotLoc}/dovecot.conf" "MAIL_HOME" "${mailHome}" || errorOut "Failed to set mail home directory in dovecot.conf"
+
+copy "${sdir}/dovecot-sql.conf" "${dovecotLoc}/dovecot-sql.conf" || errorOut "Failed to copy dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_DB_PORT" "${maildbPort}" || errorOut "Failed to set port in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_DB_ENGINE" "${mailDBEngine}" || errorOut "Failed to set mail database type in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_DB_HOST" "${maildbHost}" || errorOut "Failed to set mail database host in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_DB" "${maildb}" || errorOut "Failed to set mail database name in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_DB_USER" "${maildbUser}" || errorOut "Failed to set mail database user name in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_DB_PASSWORD" "${maildbPass}" || errorOut "Failed to set mail database password in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_HOME" "${mailHome}" || errorOut "Failed to set mail home directory in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_USER_ID" "${userid}" || errorOut "Failed to set virtual mail user id in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "MAIL_GROUP_ID" "${groupid}" || errorOut "Failed to set virtual group id in dovecot-sql.conf"
+setVariable "${dovecotLoc}/dovecot-sql.conf" "AUTH_MECHANISM" "${authMechanism}" || errorOut "Failed to set authentication mechanism is dovecot-sql.conf"
+
+copy "${sdir}/master.cf" "${postfixLoc}/master.cf" || errorOut "Failed to copy master.cf"
+copy "${sdir}/smtp_header_checks" "${postfixLoc}/smtp_header_checks" || errorOut "Failed to copy smtp_header_checks"
+copy "${sdir}/clamav-milter.conf" "${clamavLoc}/clamav-milter.conf" || errorOut "Failed to copy clamav-milter.conf"
+copy "${sdir}/clamav-milter.service" "${systemdLoc}/clamav-milter.service" || errorOut "Failed to copy clamav-milter.service"
+copy "${sdir}/clamd.conf" "${clamavLoc}/clamd.conf" || errorOut "Failed to copy clamd.conf"
+
+if [ ! -z "$( echo $doveProto | grep -e "imap" )" ]; then
+	echo -e "service imap-login { 
+        		inet_listener imap { 
+			} 
+        		inet_listener imaps { 
+				port = 0 
+			}
+    		}" >> "${dovecotLoc}/dovecot.conf"
+fi
+
+if [ ! -z "$( echo $doveProto | grep -e "pop3" )" ]; then
+	echo -e "service pop3-login { 
+        		inet_listener pop3 { 
+			} 
+        		inet_listener pop3s { 
+				port = 0 
+			} 
+    		}" >> "${dovecotLoc}/dovecot.conf"
+fi

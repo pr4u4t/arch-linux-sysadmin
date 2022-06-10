@@ -1,0 +1,2 @@
+CONF="/etc/dhcpd.conf"
+LEASE4="/var/lib/dhcp/dhcpd.leases"

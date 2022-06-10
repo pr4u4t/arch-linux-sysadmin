@@ -1,0 +1,22 @@
+clearIpTablesRules
+Clearing iptables rules[70G [[0;32m OK [0m]
+defaultIpTablesRules
+Setting default firewall policy DROP
+Drop invalid state connections
+Forward established and related[70G [[0;32m OK [0m]
+acceptLoopback
+Accepting loopback connections[70G [[0;32m OK [0m]
+acceptTrafficForUser
+Allowing traffic for user: root[70G [[0;32m OK [0m]
+acceptTrafficForUser
+Allowing traffic for user: tored[70G [[0;32m OK [0m]
+acceptTrafficForUser
+Allowing traffic for user: prauat[70G [[0;32m OK [0m]
+allowTrafficToPort
+Allowing traffic to port 22 on protocol tcp[70G [[0;32m OK [0m]
+allowTrafficToPort
+Allowing traffic to port 53 on protocol udp[70G [[0;32m OK [0m]
+allowTrafficToPort
+Allowing traffic to port 5353 on protocol udp[70G [[0;32m OK [0m]
+redirectAllFromUserToTor
+Redirect all from user:tored to: TOR[70G [[0;32m OK [0m]

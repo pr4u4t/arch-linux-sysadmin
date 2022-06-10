@@ -1,0 +1,98 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function sysadminVersion
+{ echo -en "SysAdmin 0.0.1"; }
+
+function sysadminHelp
+{
+	sysadminVersion
+	echo -e " usage:"
+	echo -e "${0} [h|?]				help"
+	echo -e "${0} list				list available plugins"
+	echo -e "${0} plugin 				display help for plugin"
+	echo -e "${0} plugin list				list plugin actions"
+	echo -e "${0} plugin action [parameters]		execute action from plugin with optional parameters"
+	echo -e "${0} plugin (h|?) 			display help for plugin"
+}
+
+function sysadminList
+{
+	sdir=`scriptDir`
+	
+	if [ $# == 1 ]; then
+		ls -lah "${sdir}/../${1}" | grep -E -e "^(-rwx)" | grep -Ev -e "(\.$)|(\.\.$)" | awk 'BEGIN { FS=" " } ; { print $9 }' | grep -Ev -e "^\.[A-za-z0-9]"
+	fi
+
+	if [ $# == 0 ]; then
+		ls -lah "${sdir}/.." | grep -E -e "^(drwx)" | grep -Ev -e "(\.$)|(\.\.$)" | awk 'BEGIN { FS=" " } ; { print $9 }' | grep -Ev -e "^\.[A-za-z0-9]" | grep -Ev -e "(bin$)|(include$)|(template$)"
+	fi
+}
+
+if [ $# == 0 ]; then
+	sysadminVersion
+	echo -e " for help type h or ?"
+	exit 1
+fi
+
+if (( $# >= 1 )); then
+	if [[ "${1}" == "h" || "${1}" == "?" ]]; then
+		sysadminHelp
+		exit 0
+	fi
+
+	if [ "$#" == 1 ]; then
+
+		if [ "${1}" == "list" ]; then
+			sysadminList
+			exit 0
+		fi
+	
+		if [ "${1}" == "help" ]; then
+			sysadminHelp
+			exit 0
+		fi
+	
+		echo -e "No action specified check ${0} ${1} help"
+		exit 2
+	fi
+
+	sdir=`scriptDir`
+	com=`echo -e "${1}" | grep -Ev -e "(include)|(bin)|(template)"`
+	com=`sysadminList | grep -E -e "${1}"`
+	if [ -z "${com}" ]; then
+		echo -e "Invalid command try h or ? for help"
+		exit 3
+	fi
+	
+	if (( $# >= 2 )); then
+		if [[ "${2}" == "h" || "${2}" == "?" ]]; then
+			if [ -x "${sdir}../${1}/help"]; then
+				sudo "${sdir}/${1}/help"
+				exit 0
+			fi
+		fi
+
+		if [ "${2}" == "list" ]; then
+			sysadminList "${1}"
+			exit 0
+		fi	 
+
+		action=`sysadminList "${1}" | grep -E -e "${2}"`
+
+		sudo "${sdir}/../${com}/${action}"
+	fi
+fi
+

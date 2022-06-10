@@ -1,0 +1,3 @@
+NET_DRIVER="rtl8139|virtio"
+http://standards-oui.ieee.org/oui.txt
+ 

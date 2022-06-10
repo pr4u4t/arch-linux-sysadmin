@@ -1,0 +1,55 @@
+#!/bin/bash
+
+function scriptDir
+{       
+        SOURCE="${BASH_SOURCE[0]}"
+        
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+        echo -e "Create database and user with password in specified postgres instance"
+        echo -e "Arguments:"
+        echo -e "-host database host"
+        echo -e "-port database port"
+#        echo -e "-user master user"
+        echo -e "-dbname database name"
+        echo -e "-dbuser database user"
+	echo -e "-output output file"
+	echo -e "[-schema] dump schema only without data"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+
+initArg "$@"
+hasArg "h" && { scriptHelp; errorOut; }
+
+host=$( valueArg "host" ) || { scriptHelp; errorOut; }
+port=$( valueArg "port" ) || { scriptHelp; errorOut; }
+#user=$( valueArg "user" ) || { scriptHelp; errorOut; }
+dbname=$( valueArg "dbname" ) || { scriptHelp; errorOut; }
+dbuser=$( valueArg "dbuser" ) || { scripthelp; errorOut; }
+out=$( valueArg "output" ) || { scriptHelp; errorOut; }
+
+declare opts
+#declare dbpass
+
+hasArg "schema" && opts="-s"
+
+#read -p "Enter database user password:" -s dbpass
+#echo
+
+#echo "${dbpass}" |
+if [ -z "${opts}" ]; then 
+	pg_dump  -h "${host}" -p "${port}" -U "${dbuser}" -f "${out}" "${dbname}"
+else
+	pg_dump  -h "${host}" -p "${port}" -U "${dbuser}" -f "${out}" "${opts}" "${dbname}"
+fi

@@ -1,0 +1,7 @@
+BASE_DIR="/usr"
+HOME_DIR="/home/mysql"
+OWNER="mysql"
+GROUP="mysql"
+SYSTEMD="/etc/systemd/"
+RESTART_POLICY="always"
+PRIVATE_TEMP="true"

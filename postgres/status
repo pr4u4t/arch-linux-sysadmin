@@ -1,0 +1,67 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Display information about postgresql database specified by parameter -db"
+	echo -e "fg: status -db MailDB"
+	echo -e "Arguments:"
+	echo -e "-db name"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; }
+hasArg h && { scriptHelp; errorOut; }
+name=`valueArg db` || errorOut "-db argument missing" 
+path=`getVariable "${sdir}/conf" "PATH" "path"`
+
+checkDir "${path}/${name}" &> /dev/null || errorOut "Specified instance does not exist"
+
+echo -e "${name}:"
+echo -e "\tDir: ${path}/${name}"
+
+serv=`serviceFile "postgresql-${name}"`
+echo -e "\tService file: ${serv}"
+
+stat=`serviceStatus "postgresql-${name}"`
+txt="${txt}\tService status: $stat"
+
+checkRead "${path}/${name}/postgresql.conf" &> /dev/null || errorOut "\tPostgresql configuration file missing"
+
+port=`cat "${path}/${name}/postgresql.conf" | grep -Ev -e "^[[:blank:]]*#" | grep -E -e "port" | grep -E -e "([#]*)(port)([[:blank:]]+)(=)([[:blank:]]+)([0-9]{1,5})"`
+addr=`cat "${path}/${name}/postgresql.conf" | grep -v -E -e "^[[:blank:]]*#" | grep -E -e "listen" | grep -oE -e "[[:blank:]]*(listen_addresses)([[:blank:]]+)(=)([[:blank:]]+)('[A-Za-z0-9\\.,]+')"`
+
+if [[ ${#addr} == 0 ]]; then 
+	echo -e "\tListen Address: localhost"
+else 
+	addr=`cat "${path}/${name}/postgresql.conf" | grep -Ev -e "^[[:blank:]]*#" | grep -E -e "listen" | grep -oE -e "([#]*)(listen_addresses)([[:blank:]]+)(=)([[:blank:]]+)('[A-Za-z0-9\\.,]+')" | grep -oE -e "'[A-Za-z0-9\\.,]+'" | grep -oE -e "[A-Za-z0-9\\.,]+"`
+
+	echo -e "\tListen Address: ${addr}"
+fi
+
+if [[ ${#port} == 0 ]]; then 
+	 echo -e "\tListen Port: 5432"
+else 
+	port=`echo $port | grep -oE -e "[0-9]{1,5}"`
+	if (( $port > 1 && $port <= 65355 )); then 
+		echo -e "\tListen Port: ${port}"
+	else
+		echo -e "\tListen Port: Invalid(${port})"
+	fi 
+fi
+
+echo -e "$txt"

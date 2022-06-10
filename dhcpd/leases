@@ -1,0 +1,70 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Display lease information and state"
+	echo -e "Arguments:"
+	echo -e "-state (active|inactive)"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg "$@"
+hasArg "h" && { scriptHelp; errorOut; }
+
+leaseLoc=$( getVariable "${sdir}/conf" "LEASE4" "path" ) || errorOut "Failed to obtain lease file location"
+
+leaseArray="$( cat "${leaseLoc}" )"
+
+#remove comments
+leaseArray="$( echo  "${leaseArray}" | sed -e "s/^[[:blank:]]*#.*$//g")"
+
+#remove empty lines
+leaseArray="$( echo  "${leaseArray}" | sed -e '/^[[:blank:]]*$/d' )"
+
+#remove line-ends
+leaseArray="$( echo "${leaseArray}" | tr -d "\r" | tr -d "\n" )"
+
+#insert new line-ends
+leaseArray="$( echo "$leaseArray" | sed "s/lease[[:blank:]]*/\n/g" )"
+
+#remove empty lines
+leaseArray="$( echo  "${leaseArray}" | sed -e '/^[[:blank:]]*$/d' )"
+
+#fuck 'a luck strToArray spliting splitting string on whatever delimeter it gets even multibyte
+#leaseArray=( $( strToArray "${leaseArray}" $'\n' ) )
+#you are fucking kidding
+
+OIFS=$IFS
+IFS=$'\n' leaseArray=( $( echo "${leaseArray}") )
+IFS=$OIFS
+
+state="active"
+declare -A leases
+
+for((i=0;i<${#leaseArray[@]};++i)); do
+	[ -z "$( echo "${leaseArray[$i]}" | grep -E -e "binding[[:blank:]]+state[[:blank:]]+${state}" )" ] && continue;
+	ip="$( echo "${leaseArray[$i]}" | grep -Eo -e "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])" )"
+	mac="$( echo "${leaseArray[$i]}" | grep -Eo -e "hardware[[:blank:]]+ethernet[[:blank:]][0-9a-f:]+;" | grep -Eo -e "([0-9a-f]+:)+[0-9a-f]{2}" )"
+	leases["$ip"]="${mac}"
+done
+ 
+for i in "${!leases[@]}" 
+do
+ 	echo -ne "IP  : $i\t"
+  	echo -e "MAC : ${leases[$i]}\n"
+done
+                 

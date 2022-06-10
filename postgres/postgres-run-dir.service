@@ -1,0 +1,32 @@
+[Unit]
+Description=PostgreSQL create /run directory
+Before=network.target
+
+[Service]
+Type=simple
+TimeoutSec=120
+#User=postgres
+#Group=postgres
+
+#Environment=PG_HTTPDB=/home/postgres/HttpDB
+
+SyslogIdentifier=postgres
+#PIDFile=${PG_HTTPDB}/postmaster.pid
+
+ExecStart=/usr/bin/install -g postgres -o postgres -d /run/postgresql
+#ExecStartPre=/usr/bin/postgresql-check-db-dir ${PG_HTTPDB}
+#ExecStart= /usr/bin/pg_ctl -s -D ${PG_HTTPDB} start -w -t 120 
+#ExecReload=/usr/bin/pg_ctl -s -D ${PG_HTTPDB} reload
+#ExecStop=  /usr/bin/pg_ctl -s -D ${PG_HTTPDB} stop -m fast
+
+# Due to PostgreSQL's use of shared memory, OOM killer is often overzealous in
+# killing Postgres, so adjust it downward
+OOMScoreAdjust=-200
+
+# Additional security-related features
+#PrivateTmp=true
+#ProtectSystem=full
+#NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

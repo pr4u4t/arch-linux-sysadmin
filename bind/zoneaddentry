@@ -1,0 +1,109 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Add dns zone entry"
+	echo -e "Arguments:"
+	echo -e "-name domain name"
+	echo -e "-record-type (A|MX|TXT)"
+	echo -e "-value value of record"
+	echo -e "-pref preference value applicable to mx only"
+	echo -e "-id identifier applicable for A records,txt"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg "${@}"
+hasArg "h" && { scriptHelp; errorOut; }
+sizeArg || { scriptHelp; errorOut; }
+
+#if [ $# != 4 ]; then
+#	errorOut "Invalid number of arguments should be: domain record-type record-value record-id"
+#fi
+
+name=$( valueArg "name" )
+recType=$( valueArg "record-type" )
+value=$( valueArg "value" )
+
+checkRead "${sdir}/conf" || errorOut "Configuration file missing"
+
+zoneDirectory=`getVariable "${sdir}/conf" "DIRECTORY" "path"` || errorOut ""
+
+if [ -z "$( echo "${recType}" | grep -Eo -e "(A|MX|TXT)" )" ]; then
+	errorOut "Unknown record type: ${recType}"
+fi
+
+#echo "${name}"
+#echo "${recType}"
+#echo "${value}"
+
+buffer=$( ${sdir}/zoneinfo -name "${name}" )
+if [ -z "${buffer}" ]; then
+	errorOut "Zone info fetching failed"
+fi
+
+serial=$( echo -e "${buffer}" | grep -E -e "Serial:" | grep -Eo -e "[0-9]+" )
+if [ -z "${serial}" ]; then
+	errorOut "Serial fetching failed"
+fi
+
+#oldSerial=$( echo -e "${serial}" | grep )
+
+newSerial=`date +%Y%m%d`
+
+if [ "$( echo "${serial}" | grep -E -e "${newSerial}" )" ]; then
+	newSerial=$serial
+	(( newSerial++ ))
+	#echo "INC"
+else
+	newSerial="${newSerial}01"
+	#echo "NEW"
+fi
+
+
+if [ "${recType}" == "A" ]; then
+	ident=$( valueArg "id" ) || errorOut "Identifier argument missing"
+
+	#buffer=$( ${sdir}/zoneinfo -name "${name}" )
+	identEsc=$( regexpEscape "${ident}" )
+
+	if [ "$( echo -e "${buffer}" | grep -E -e "A[[:blank:]]+servers" | grep -Eo -e "${identEsc}" )" ]; then
+		errorOut "Identifier already in use:${ident}"
+	fi
+
+	line="${ident}\tIN\tA\t\t${value}"
+	appendFile "${zoneDirectory}/${name}" "${line}" || errorOut "Failed to append ${line} to ${zoneDirectory}/${name}"
+fi
+
+if [ "${recType}" == "MX" ]; then
+	echo "MX"
+fi
+
+if [ "${recType}" == "TXT" ]; then
+	echo "TXT"
+	ident=$( valueArg "id" ) || errorOut "Identifier argument missing"
+	identEsc=$( regexpEscape "${ident}" )
+	
+	if [ "$( echo -e "${buffer}" | grep -E -e "TXT[[:blank:]]+records" | grep -Eo -e "${identEsc}" )" ]; then
+		errorOut "Identifier already in use:${ident}"
+	fi
+
+	line=""
+	appendFile "${zoneDirectory}/${name}" "${line}" || errorOut "Failed to append ${line} to ${zoneDirectory}/${name}"
+fi
+
+replaceInFile "${zoneDirectory}/${name}" "${serial}" "${newSerial}" || errorOut "Faile to replace ${serial} with ${newSerial} in ${zoneDirectory}/${name}"
+

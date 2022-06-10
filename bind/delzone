@@ -1,0 +1,44 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+domain=$1
+
+if [ $# != 1 ]; then
+	echo "Invalid number of arguments should be: domain"
+	errorOut
+fi
+
+checkRead "${sdir}/conf" || errorOut "Configuration file missing"
+
+owner=`getVariable "${sdir}/conf" "USER" "user"` || errorOut "Failed to read USER variable from ${sdir}/conf"
+group=`getVariable "${sdir}/conf" "GROUP" "user"` || errorOut "Failed to read GROUP variable from ${sdir}/conf"
+bindPath=`getVariable "${sdir}/conf" "BIND_PATH" "path"` || errorOut "Failed to read BIND_PATH from ${sdir}/conf"
+zoneDirectory=`getVariable "${sdir}/conf" "ZONE_DIRECTORY" "path"` || errorOut "Failed to read ZONE_DIRECTORY from ${sdir}/conf"
+
+checkDir "${zoneDirectory}" &> /dev/null || errorOut "zone directory does not exists or not listable"
+checkRead "${bindPath}/named.conf" &> /dev/null || errorOut "Bind configuration file does not exists"
+
+checkRead "${zoneDirectory}/${domain}" && { rm -f "${zoneDirectory}/${domain}" || errorOut "Failed to remove zone ${zoneDirectory}/${domain}"; }
+
+tmp=`regexpEscape "${domain}"`
+
+check=`cat "${bindPath}/named.conf" | grep -Eo -e "(zone)[[:blank:]]+\"${tmp}\"[[:blank:]]+\{[[:blank:]]+(type)[[:blank:]]+(master|slave);[[:blank:]]+(file)[[:blank:]]+\"${zoneDirectory}/${tmp}\";[[:blank:]]+\};"`
+if [ ! -z "$check" ]; then
+	removeFromFile "${bindPath}/named.conf" "zone[[:blank:]]+\"${tmp}\"[[:blank:]]+\\{[[:blank:]]+type[[:blank:]]+(master|slave);[[:blank:]]+(file)[[:blank:]]+\"${zoneDirectory}/${tmp}\";[[:blank:]]+\\};" || errorOut "Failed to remove zone entry from ${bindPath}/named.conf"
+	touchFile "${bindPath}/named.conf" "${user}" "${group}" || errorOut "Failed to change ${bindPath}/named.conf owner and group to ${user}:${group}"
+fi

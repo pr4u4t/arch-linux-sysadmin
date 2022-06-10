@@ -1,0 +1,33 @@
+#options
+PATH="/etc/openvpn"
+
+#server options
+CA_FILE="ca.pem"
+MODE="server"
+LOCAL_ADDRESS="192.168.129.1"
+LOCAL_PORT="1194"
+SERVER_CERT="server.crt"
+SERVER_KEY="server.key"
+KEEP_ALIVE_PING="10"
+KEEP_ALIVE_TIMEOUT="120"
+
+#client options
+REMOTE_ADDR="192.168.129.1"
+REMOTE_PORT="1194"
+CERT="cert.crt"
+
+#shared options
+PROTOCOL="udp"
+COMPRESS="yes"
+DH_FILE="dh.pem"
+CIPHER="BF-CBC"
+DEV_TYPE="tap"
+DEV_NAME="tap0"
+
+#netctl
+#NETCTL_PATH="/etc/netctl"
+#DESCRIPTION="VPN interface"
+#USER="nobody"
+#GROUP="nobody"
+#DEV_IP="static"
+#DEV_ADDR="192.168.0.1/16"

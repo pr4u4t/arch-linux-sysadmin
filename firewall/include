@@ -1,0 +1,334 @@
+#!/bin/bash
+
+#the name of user for tor
+torUser="tor"
+#tor address
+torAddress="127.0.0.1"
+#Tor Trans Port
+torPort="9040"
+#Tor Dns Port
+torDns="5353"
+#on the fly given address for tor domains
+onionNet="10.192.0.0/10" 
+
+#####################DEFINES#################
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+NO_COLOR="\033[0m"
+ALIGN="\033[70G"
+
+#function check
+#{
+#	"$@"
+#
+#	if [ $? != 0 ]; then
+#		clearIpTablesRules
+#		echo -e "[$RED FAIL $NO_COLOR]"
+#		exit
+#	fi
+#	#printf  "%-8s [ YES ]\r\n"
+#	echo -e "$ALIGN [$GREEN OK $NO_COLOR]"
+#}
+
+function check
+{
+        echo "$@" | awk '{print $1}' || errorOut "Missing command name"
+
+        "$@" || { defaultWall; echo -e "[$RED FAIL $NO_COLOR]"; errorOut; }
+
+        #if [ $? != 0 ]; then
+        #        #clearIpTablesRules
+        #        echo -e "[$RED FAIL $NO_COLOR]"
+        #        exit
+        #fi  
+        #printf  "%-8s [ YES ]\r\n"
+        echo -e "$ALIGN [$GREEN OK $NO_COLOR]"
+}
+
+
+function clearIpTablesRules
+{
+	echo -ne "Clearing iptables rules"
+	iptables -t filter -F
+	iptables -t filter -X
+	iptables -t nat -F
+	iptables -t nat -X
+	#iptables -t mangle -F
+	#iptables -t mangle -X
+	
+	return 0
+}
+
+function defaultIpTablesRules
+{
+	if [ $# != 1 ]; then
+		echo -ne "Invalid number of arguments: ${FUNCNAME[0]} policy (ACCEPT|DROP)"
+		return -1
+	fi
+
+	echo -e "Setting default firewall policy $1"
+	iptables -P INPUT $1
+	iptables -P FORWARD $1
+	iptables -P OUTPUT $1
+	echo -e "Drop invalid state connections"
+	iptables -t filter -A OUTPUT -m state --state INVALID -j DROP
+	echo  -n "Forward established and related"
+        iptables -t filter -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        iptables -t nat -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        iptables -t filter -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        iptables -t nat -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+	return 0
+}
+
+#function forwardRelated
+#{
+#	echo -e "Drop invalid state connections"
+#        iptables -t filter -A OUTPUT -m state --state INVALID -j DROP
+#        echo  -n "Forward established and related"
+#        iptables -t filter -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+#        iptables -t nat -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+#        iptables -t filter -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+#        iptables -t nat -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+#		
+#}
+
+function acceptTrafficForUser
+{
+	if [ $# != 1 ]; then
+		echo -ne "Invalid number of arguments: ${FUNCNAME[0]} user"
+		return -1
+	fi
+	
+	id=`id -u $1`
+	echo -ne "Allowing traffic for user: $1"
+	
+	iptables -t nat -A OUTPUT    -m owner --uid-owner $id -j ACCEPT
+	iptables -t filter -A OUTPUT -m owner --uid-owner $id -j ACCEPT
+	
+	return 0
+}
+
+function redirectAllTrafficToTor
+{
+	echo  -n "Redirect all traffic to: TOR"
+	
+        iptables -t nat -A OUTPUT -d 127.0.0.1 -j ACCEPT
+	iptables -t filter -A OUTPUT -d 127.0.0.1 -j ACCEPT
+	
+	iptables -t nat -A INPUT -d 127.0.0.1 -j ACCEPT
+	iptables -t filter -A INPUT -d 127.0.0.1 -j ACCEPT
+	
+	iptables -t nat -A OUTPUT -m owner ! --uid-owner $4 -d $1 -p tcp --syn -j REDIRECT --to-ports $2
+
+	iptables -t nat -A OUTPUT -m owner ! --uid-owner $4 -p udp --dport 53 -j REDIRECT --to-ports $3
+	
+	iptables -t nat -A OUTPUT -m owner ! --uid-owner $4 -p tcp --syn -j REDIRECT --to-ports $2
+
+	iptables -A OUTPUT -m conntrack --ctstate INVALID -j DROP
+	iptables -A OUTPUT -m state --state INVALID -j DROP
+	iptables -A OUTPUT ! -o lo ! -d 127.0.0.1 ! -s 127.0.0.1 -p tcp -m tcp --tcp-flags ACK,FIN ACK,FIN -j DROP
+	iptables -A OUTPUT ! -o lo ! -d 127.0.0.1 ! -s 127.0.0.1 -p tcp -m tcp --tcp-flags ACK,RST ACK,RST -j DROP
+
+	
+	return 0
+}
+
+function redirectAllFromUserToTor
+{
+        echo -n "Redirect all from user:$1 to: TOR"
+        uid=`id -u $1` 
+        #$1 owner
+        #$2 onion od the fly given address class 
+        #$3 Tor TransPort
+        #$4 Tor DnsPort
+
+	iptables -t nat -A OUTPUT -m owner --uid-owner $uid -d 127.0.0.1 -j ACCEPT
+        iptables -t filter -A OUTPUT -m owner --uid-owner $uid -d 127.0.0.1 -j ACCEPT
+  
+        iptables -t nat -A INPUT -d 127.0.0.1 -j ACCEPT
+        iptables -t filter -A INPUT -d 127.0.0.1 -j ACCEPT
+
+        iptables -t nat -A OUTPUT -m owner --uid-owner $uid -d $2 -p tcp --syn -j REDIRECT --to-ports $3
+
+	iptables -t nat -A OUTPUT -m owner --uid-owner $uid -p udp --dport 53 -j REDIRECT --to-ports $4
+
+        iptables -t nat -A OUTPUT -m owner --uid-owner $uid -p tcp --syn -j REDIRECT --to-ports $3
+
+	iptables -A OUTPUT -m conntrack --ctstate INVALID -j DROP
+        iptables -A OUTPUT -m state --state INVALID -j DROP
+        iptables -A OUTPUT ! -o lo ! -d 127.0.0.1 ! -s 127.0.0.1 -p tcp -m tcp --tcp-flags ACK,FIN ACK,FIN -j DROP
+        iptables -A OUTPUT ! -o lo ! -d 127.0.0.1 ! -s 127.0.0.1 -p tcp -m tcp --tcp-flags ACK,RST ACK,RST -j DROP
+
+        iptables -t filter -A OUTPUT -m owner --uid-owner $uid -p tcp --dport $3 -j ACCEPT
+        iptables -t filter -A OUTPUT -m owner --uid-owner $uid -p udp --dport $4 -j ACCEPT
+
+        return 0
+}
+
+function allowTrafficToPort
+{
+	if (( $# < 2 || $# > 3 )); then
+		echo -ne "Invalid number of arguments: ${FUNCNAME[0]} port protocol [address]"
+	fi
+
+	if [ $# == 2 ]; then
+		echo -n "Allowing traffic to port $1 on protocol $2"
+		iptables -t filter -A INPUT -p $2 --dport $1 -j ACCEPT
+	fi
+
+	if [ $# == 3 ]; then
+		echo -n "Allowing traffic to port $1 on protocol $2 from $3"
+		iptables -t filter -A INPUT -p $2 --dport $1 -s $3 -j ACCEPT
+	fi
+}
+
+function setNatIpTablesRules
+{
+        if [ $# != 3 ]; then
+                echo -ne "Invalid number of arguments: ${FUNCNAME[0]} if-wan if-lan ip-rng-lan"
+                return -1
+        fi
+
+        echo -ne "Setting rules for normal NAT for network: $3"
+        iptables -t nat    -A POSTROUTING -o $1 -j MASQUERADE
+        iptables -t filter -A FORWARD     -s $3 -i $2 -j ACCEPT
+        iptables -t filter -A FORWARD     -d $3 -i $1 -j ACCEPT
+#        iptables -t filter -A FORWARD     -o $1 -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        return 0
+}
+
+function redirectTrafficToTorNet
+{
+        if [ $# != 5 ]; then
+                echo -ne "Invalid number of arguments: ${FUNCNAME[0]} iface iface-ip-rng onion-ip-rng tor-dns-port tor-trans-port"
+                return -1
+        fi
+
+        echo -ne "Redirecting traffic from $1 fo range $2 to Tor"
+        
+	iptables -t nat -A PREROUTING -i $1 -s $2 -p udp --dport 53 -j REDIRECT --to-ports $4
+
+	iptables -t nat -A PREROUTING -s $2 -d $3 -p tcp --syn -j REDIRECT --to-ports $5
+
+        iptables -t nat -A PREROUTING -s $2 -p tcp --syn -j REDIRECT --to-ports $5
+
+	iptables -A OUTPUT -m conntrack --ctstate INVALID -j DROP
+        iptables -A OUTPUT -m state --state INVALID -j DROP
+        iptables -A OUTPUT ! -o lo ! -d 127.0.0.1 ! -s 127.0.0.1 -p tcp -m tcp --tcp-flags ACK,FIN ACK,FIN -j DROP
+        iptables -A OUTPUT ! -o lo ! -d 127.0.0.1 ! -s 127.0.0.1 -p tcp -m tcp --tcp-flags ACK,RST ACK,RST -j DROP
+
+        return 0
+}
+
+function bridgeInterfaces
+{       
+        if [ $# != 5 ]; then
+                echo -ne "Invalid number of arguments: ${FUNCNAME[0]} first-if first-ip-rng second-if second-ip-rng (ALL | TCP | UDP)"
+                return -1
+        fi
+        
+        echo -ne "Bridging interfaces $1 <-> $3"
+
+	if [ "$5" = "UDP" ]; then
+		iptables -p udp -A FORWARD -i $1 -s $2 -o $3 -d $4 -j ACCEPT
+                iptables -p udp -A FORWARD -i $3 -s $4 -o $1 -d $2 -j ACCEPT
+	fi
+ 
+	if [ "$5" = "TCP" ]; then
+		iptables -p tcp -A FORWARD -i $1 -s $2 -o $3 -d $4 -j ACCEPT
+                iptables -p tcp -A FORWARD -i $3 -s $4 -o $1 -d $2 -j ACCEPT
+	fi
+
+	if [ "$5" = "ALL" ]; then
+        	iptables -A FORWARD -i $1 -s $2 -o $3 -d $4 -j ACCEPT
+        	iptables -A FORWARD -i $3 -s $4 -o $1 -d $2 -j ACCEPT
+        fi
+
+	return 0
+}
+
+function acceptLoopback
+{
+        echo -ne "Accepting loopback connections"
+
+        iptables -t nat -A OUTPUT -d 127.0.0.1 -j ACCEPT
+        iptables -t filter -A OUTPUT -d 127.0.0.1 -j ACCEPT
+    
+        iptables -t nat -A INPUT -d 127.0.0.1 -j ACCEPT
+        iptables -t filter -A INPUT -d 127.0.0.1 -j ACCEPT
+}
+
+function acceptFromTo
+{
+	if [ $# != 2 ]; then
+                echo -ne "Invalid number of arguments: ${FUNCNAME[0]} source destination"
+                return -1
+        fi
+
+	iptables -t filter -A FORWARD -s $1 -d $2 -j ACCEPT
+}
+
+function dropFromTo 
+{
+	if [ $# != 2 ]; then
+                echo -ne "Invalid number of arguments: ${FUNCNAME[0]} source destination"
+                return -1
+        fi
+
+	iptables -t filter -A FORWARD -s $1 -d $2 -j DROP
+}
+
+function dropFromNotTo
+{
+	if [ $# != 2 ]; then
+		echo -ne "Invalid number of arguments: ${FUNCNAME[0]} source destination"
+		return -1
+	fi
+
+	iptables -t filter -A FORWARD -s $1 ! -d $2 -j DROP
+}
+
+function redirectFromToAddressPort
+{
+	if [ $# != 4 ]; then
+                echo -ne "Invalid number of arguments: ${FUNCNAME[0]} source destination address port protocol"
+                return -1
+        fi
+
+	iptables -t nat -A PREROUTING -s $1 -d $2 -p $5 -j DNAT --to-destination $3:$4
+}
+
+function redirectFromNotToAddressPort
+{
+	if [ $# != 5 ]; then
+                echo -ne "Invalid number of arguments: ${FUNCNAME[0]} source destination address port protocol"
+                return -1
+        fi
+
+	iptables -t nat -A PREROUTING -p tcp -s $1 ! -d $2 -j DNAT --to-destination $3:$4
+}
+
+function filterPing
+{
+	if [ $# != 2 ]; then
+		echo -ne "Invalid number of arguments: ${FUNCNAME[0]} source destination"
+		return -1
+	fi
+
+	echo -ne "Allowing pings from $1 to $2"
+        iptables -A INPUT -p icmp --icmp-type 8 -s $1 -d $2 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+        iptables -A OUTPUT -p icmp --icmp-type 0 -s $2 -d $1 -m state --state ESTABLISHED,RELATED -j ACCEPT
+}
+
+function fullNat
+{
+	if [ $# != 4 ]; then
+		echo -ne "Invalid number of arguments: ${FUNCNAME[0]} dstIface srcHost dstIface dstHost"
+		return -1
+	fi
+
+	echo -ne "Full NAT for ${2} <-> ${4}"
+	iptables -t nat -A PREROUTING -i ${1} -d ${2} -j DNAT --to-destination ${4}
+	iptables -t nat -A POSTROUTING -s ${4} -o ${3} -j SNAT --to-source ${2}
+}

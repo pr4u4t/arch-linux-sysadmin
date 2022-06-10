@@ -1,0 +1,44 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Initialize new postgresql cluster with given parameters"
+	echo -e "Arguments:"
+	echo -e "-name name"
+	echo -e "-host host"
+	echo -e "-port port"
+	echo -e "fg: backup -name ProductionInstance -host 127.0.0.1 -p 5433"
+	#echo -e "-addr listen address"
+	#echo -e "-port listen port"
+	#echo -e "fg: init -db MailDB -addr localhost -port 2345"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; }
+hasArg h && { scriptHelp; errorOut; }
+
+name=`valueArg "name"` || errorOut "Instance name argument missing" 
+host=`valueArg "host"` || errorOut "Instance host argument missing"
+port=`valueArg "port"` || errorOut "Instance port argument missing"
+
+#touch "${path}/${name}/backup_in_progress" || errorOut "Failed to touch ${path}/${name}/backup_in_progress"
+#psql -c "select pg_start_backup('hot_backup');"
+#tar -cf /var/lib/pgsql/backup.tar /var/lib/pgsql/data/
+#psql -c "select pg_stop_backup();"
+#rm /var/lib/pgsql/backup_in_progress
+#tar -rf /var/lib/pgsql/backup.tar /var/lib/pgsql/archive/

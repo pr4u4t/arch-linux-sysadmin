@@ -1,0 +1,16 @@
+#we are listening on local interfaces
+SocksPort ${SOCKS_PORT}
+SocksPolicy ${SOCKS_POLICY}
+
+#translate tor addresses to this for vps can can be transparently routed
+VirtualAddrNetworkIPv4  ${ADDR_IPV4_MAP}
+AutomapHostsOnResolve   ${AUTOMAP_ON_RESOLVE}
+DNSPort                 ${DNS_PORT}
+TransPort               ${TRANS_PORT}
+
+#dump
+Log notice syslog
+DataDirectory ${TOR_HOME}
+
+#HiddenServiceDir /srv/tor/sshd/
+#HiddenServicePort 22 127.0.0.1:22

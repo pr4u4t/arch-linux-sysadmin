@@ -1,0 +1,32 @@
+#!/bin/bash
+
+function scriptDir
+{
+	SOURCE="${BASH_SOURCE[0]}"
+
+	while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  		DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  		SOURCE="$(readlink "$SOURCE")"
+  		[[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+	done
+	DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+	echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "List postgresql databases and print information about them"
+	echo -e "fg: list"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+hasArg h && { scriptHelp; errorOut; }
+
+path=`getVariable "${sdir}/conf" "PATH" "path"`
+checkDir "${path}" || errorOut
+
+for fptr in $path/*; do
+	$sdir/status "-db " `echo $fptr | awk 'BEGIN { FS = "/" } ; { print $(NF) }'`
+done

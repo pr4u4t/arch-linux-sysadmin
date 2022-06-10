@@ -1,0 +1,50 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Create new listener for ngircd irc server"
+	echo -e "Arguments:"
+	echo -e "cert public certificate file"
+	echo -e "privkey private key file"
+	echo -e "dhfile diffie hellman parameters file"
+	echo -e "port listening port for incoming connections"
+}
+
+sdir=`scriptDir`
+
+source "${sdir}/../include/utils"
+initArg "$@"
+sizeArg || { scriptHelp; errorOut; }
+hasArg "h" && { scriptHelp; errorOut; }
+cert=`valueArg "cert"` || { scriptHelp; errorOut; }
+privkey=`valueArg "privkey"` || { scriptHelp; errorOut; }
+dhfile=`valueArg "dhfile"` #|| { scriptHelp; errorOut; }
+port=`valueArg "port"` || { scriptHelp; errorOut; }
+
+usr=`getVariable "${sdir}/conf" "IRC_USER" "user"` || errorOut "Failed to get irc owner user"
+grp=`getVariable "${sdir}/conf" "IRC_GROUP" "group"` || errorOut "Failed to get irc owner group"
+cpath=`getVariable "${sdir}/conf" "CONF_PATH" "path"` || errorOut "Failed to obtain ngircd configuartion path"
+
+checkRead "${sdir}/listener_ssl.conf.tpl" || errorOut "Listening template file listen.tpl.conf not found in ${sdir}"
+touchDirectory "${cpath}/conf.d" "${usr}" "${grp}" "rw" "rw" "-" || errorOut "Listeners configuration directory not found"
+
+copy "${sdir}/listener_ssl.conf.tpl" "${cpath}/conf.d/listener_ssl.conf" || errorOut "Failed to copy ${sdir}/listener_ssl.conf.tpl to ${cpath}/conf.d/listener_ssl.conf"
+setVariable "${cpath}/conf.d/listener_ssl.conf" "CERT_FILE" "${cert}" || errorOut "Failed to set variable CERT_FILE in ${cpath}/conf.d/listener_ssl.conf to ${cert}"
+setVariable "${cpath}/conf.d/listener_ssl.conf" "KEY_FILE" "${privkey}" || errorOut "Failed to set variable KEY_FILE in ${cpath}/conf.d/listener_ssl.conf to ${privkey}"
+if [[ ${#dhfile} ]]; then
+setVariable "${cpath}/conf.d/listener_ssl.conf" "DH_FILE" "${dhfile}" || errorOut "Failed to set variable DH_FILE in ${cpath}/conf.d/listener_ssl.conf to ${dhfile}"
+fi
+setVariable "${cpath}/conf.d/listener_ssl.conf" "PORT" "${port}" || errorOut "Failed to set variable PORT in ${cpath}/conf.d/listener_ssl.conf to ${port}"

@@ -1,0 +1,11 @@
+HOME="/home/http"
+LIGHTTPD_CONF="/etc/lighttpd"
+USER="http"
+GROUP="http"
+ERRLOG="/var/log/lighttpd"
+PORT="80"
+DIR_LIST="disable"
+SERVER_ADDRESS="127.0.0.1"
+MIMETYPE="yes"
+PHP="yes"
+

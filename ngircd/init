@@ -1,0 +1,85 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+
+source "${sdir}/../include/utils"
+initArg "$@"
+
+ppath=`getVariable "${sdir}/conf" "PAM_PATH" "path"` || errorOut "Failed to get PAM configuration path"
+usr=`getVariable "${sdir}/conf" "IRC_USER" "user"` || errorOut "Failed to get irc owner user"
+grp=`getVariable "${sdir}/conf" "IRC_GROUP" "group"` || errorOut "Failed to get irc owner group"
+cpath=`getVariable "${sdir}/conf" "CONF_PATH" "path"` || errorOut "Failed to obtain ngircd configuartion path"
+name=`getVariable "${sdir}/conf" "NAME" "custom" "([A-Za-z0-9]+\.)*[A-Za-z0-9]+\.[a-z]+"` || errorOut "Failed to obtain server name"
+info=`getVariable "${sdir}/conf" "INFO" "custom" "([[:alnum:]]|[[:blank:]])+"` || errorOut "Failed to obtain server description"
+listen=`getVariable "${sdir}/conf" "LISTEN" "ip"` || errorOut "Failed to obtain listen address"
+ports=`getVariable "${sdir}/conf" "PORTS" "port"` || errorOut "Failed to obtain listen port"
+#password=`getVariable "${sdir}/conf" "PASSWORD" "alnum"` || echo "Global server password empty" #errorOut "Failed to obtain server password"
+#certFile=`getVariable "${sdir}/conf" "CERT_FILE" "path"` || errorOut "Failed to obtain certificate file"
+#keyFile=`getVariable "${sdir}/conf" "KEY_FILE" "path"` || errorOut "Failed to obtain key file"
+#dhFile=`getVariable "${sdir}/conf" "DH_FILE" "path"` || errorOut "Failed to obtain diffie hellman parameters file"
+secure=`getVariable "${sdir}/conf" "SECURITY" "path"` || errorOut "Failed to obtain pam libraries directory location"
+dbname=`getVariable "${sdir}/conf" "DBNAME" "alpha"` || errorOut "Failed to obtain database name"
+dbhost=`getVariable "${sdir}/conf" "DBHOST" "ip"` || errorOut "Failed to obtain database host"
+dbport=`getVariable "${sdir}/conf" "DBPORT" "port"` || errorOut "Failed to obtain database port"
+dbuser=`getVariable "${sdir}/conf" "DBUSER" "user"` || errorOut "Failed to obtain database user"
+dbpass=`getVariable "${sdir}/conf" "DBPASS" "text"` || errorOut "Failed to obtain database password"
+conTimeout=`getVariable "${sdir}/conf" "CONNECT_TIMEOUT" "integer"` || errorOut "Failed to obtain database connection timeout"
+pwhash=`getVariable "${sdir}/conf" "PWHASH" "custom" "(sha1|md5)"` || errorOut "Failed to obtain password hash type"
+cloak=`getVariable "${sdir}/conf" "CLOAK" "dns"` || errorOut "Failed to obtain cloak host"
+
+#echo "${path}"
+#echo "${name}"
+#echo "${info}"
+#echo "${listen}"
+#echo "${ports}"
+#echo "${password}"
+#echo "${certFile}"
+#echo "${keyFile}"
+#echo "${dhFile}"
+
+checkDir "${secure}" || errorOut "PAM libraries directory does not exist"
+#checkRead "${sdir}/${certFile}" || errorOut "IRC server public certificate not found in ${sdir}"
+#checkRead "${sdir}/${keyFile}" || errorOut "IRC server private key not found in ${sdir}"
+#checkRead "${sdir}/${dhfile}" || errorOut "DH parameters file not found"
+checkRead "${sdir}/pam_pgsql.so" || errorOut "PAM postgresql authentication not found in ${sdir}"
+checkRead "${sdir}/ngircd.pam.tpl" || errorOut "ngircd PAM configuration not found in ${sdir}"
+checkRead "${sdir}/authdb.conf.tpl" || errorOut "ngircd authdb.conf not found in ${sdir}"
+
+touchDirectory "${cpath}" "${usr}" "${grp}" "rw" "rw" "-" || errorOut "ngircd configuration directory not found"
+touchDirectory "${cpath}/conf.d" "${usr}" "${grp}" "rw" "rw" "-" || errorOut "Listeners configuration directory not found"
+
+copy "${sdir}/authdb.conf.tpl" "${cpath}/authdb.conf" || errorOut "Failed to copy ${sdir}/authdb.conf.tpl to ${cpath}/authdb.conf"
+setVariable "${cpath}/authdb.conf" "DBHOST" "${dbhost}" || errorOut "Failed to set variable DBHOST in ${cpath}/authdb.conf to ${dbhost}"
+setVariable "${cpath}/authdb.conf" "DBPORT" "${dbport}" || errorOut "Failed to set variable DBPORT in ${cpath}/authdb.conf to ${dbport}"
+setVariable "${cpath}/authdb.conf" "DBNAME" "${dbname}" || errorOut "Failed to set variable DBNAME in ${cpath}/authdb.conf to ${dbname}"
+setVariable "${cpath}/authdb.conf" "DBUSER" "${dbuser}" || errorOut "Failed to set variable DBUSER in ${cpath}/authdb.conf to ${dbuser}"
+setVariable "${cpath}/authdb.conf" "DBPASS" "${dbpass}" || errorOut "Failed to set variable DBPASS in ${cpath}/authdb.conf to ${dbpass}"
+setVariable "${cpath}/authdb.conf" "TIMEOUT" "${conTimeout}" || errorOut "Failed to set variable TIMEOUT in ${cpath}/authdb.conf to ${conTimeout}"
+setVariable "${cpath}/authdb.conf" "PWHASH" "${pwhash}" || errorOut "Failed to set variable PWHASH in ${cpath}/authdb.conf to ${pwhash}"
+
+copy "${sdir}/pam_pgsql.so" "${secure}" || errorOut "Failed to copy ${sdir}/pam_pgsql.so to ${secure}"
+
+copy "${sdir}/ngircd.pam.tpl" "${ppath}/ngircd" || errorOut "Failed to copy ${sdir}/ngircd.pam.tpl to ${ppath}/ngircd.pam"
+setVariable "${ppath}/ngircd.pam" "AUTHDB_CONF" "${cpath}/authdb.conf" || errorOut "Failed to set variable AUTHDB_CONF in ${ppath}/ngircd.pam"
+
+copy "${sdir}/ngircd.conf.tpl" "${cpath}/ngircd.conf" || errorOut "Failed to copy ngircd.conf.tpl to ${cpath}/ngircd.conf"
+setVariable "${cpath}/ngircd.conf" "NAME" "${name}" || errorOut "Failed to set variable NAME in ${cpath}/ngircd.conf to ${name}" 
+setVariable "${cpath}/ngircd.conf" "INFO" "${info}" || errorOut "Failed to set variable INFO in ${cpath}/ngircd.conf to ${info}"
+setVariable "${cpath}/ngircd.conf" "LISTEN" "${listen}" || errorOut "Failed to set variable LISTEN in ${cpath}/ngircd.conf to ${info}"
+setVariable "${cpath}/ngircd.conf" "SERVER_GID" "${grp}" || errorOut "Failed to set variable SERVER_GID in ${cpath}/ngircd.conf to ${grp}"
+setVariable "${cpath}/ngircd.conf" "SERVER_UID" "${usr}" || errorOut "Failed to set variable SERVER_UID in ${cpath}/ngircd.conf to ${usr}"
+setVariable "${cpath}/ngircd.conf" "CLOAK_HOST" "${cloak}" || errorOut "Failed to set variable CLOAK_HOST in ${cpath}/ngircd.conf to ${cloak}"
+setVariable "${cpath}/ngircd.conf" "INCLUDE_DIR" "${cpath}/conf.d" || errorOut "Failed to set variable INCLUDE_DIR in ${cpath}/ngircd.conf to ${cpath}/conf.d"

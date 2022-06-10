@@ -1,0 +1,35 @@
+MAIL_USER="vmail"
+MAIL_USER_ID="5000"
+MAIL_GROUP="vmail"
+MAIL_GROUP_ID="5000"
+MAIL_HOME="/home/vmail"
+MAIL_DB_HOST="192.168.140.28"
+MAIL_DB_PORT="5433"
+MAIL_DB_ENGINE="pgsql"
+MAIL_DB="postfix"
+MAIL_DB_USER="postfix"
+MAIL_DB_PASS="somepass"
+
+POSTFIX_DIR="/etc/postfix"
+DOVECOT_DIR="/etc/dovecot"
+
+AUTH_MECHANISM="CRAM-MD5"
+VMAIL_CERT="vmail.cert"
+VMAIL_KEY="vmail.key"
+DOVE_PROTO="imap pop3"
+ADMIN_EMAIL="admin@mail.com"
+MAIN_DOMAIN="some.domain.com"
+SMTP_PORT="25"
+
+SERVICE_LOCATION="/etc/systemd/system"
+CLAMAV_LOCATION="/etc/clamav"
+MILTER_SOCKET_USER="clamav"
+MILTER_SOCKET_GROUP="postfix"
+
+
+RELAY_HOST="[192.168.140.101]"
+
+#DOVECOT_CRYPT="dovecot:CRAM-MD5"
+#DOVECOT_LOCATION="/usr/sbin/doveadm pw"
+#POSTFIX_ADMIN_VHOST="pstfxadm.somedomain.com.local"
+#POSTFIX_ADMIN_INTERFACE="vtap0"

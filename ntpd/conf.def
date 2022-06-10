@@ -1,0 +1,7 @@
+NTP_DIR="/etc"
+LOG_FILE="/var/log/ntp.log"
+DRIFT_FILE="/var/lib/ntp/ntp.drift"
+DEFAULT_RESTRICT_OPTIONS="default limited kod nomodify notrap nopeer"
+DEFAULT_RESTRICT_IP="127.0.0.1"
+SERVER_LOCAL="192.168.140.1"
+LOCAL_STRATUM="12"

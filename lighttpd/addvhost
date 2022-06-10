@@ -1,0 +1,101 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Add virtual host to lighttpd specified by -vhost and optional -iface to add host to specific interface"
+	echo -e "Arguments:"
+	echo -e "-vhost host"
+	echo -e "-iface [interface]"
+	echo -e "fg: addvhost -vhost somehost.exampledomain.com"
+	echo -e "fg: addvhost -vhost somehost.exampledomain.com -iface enp1s3"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; }
+hasArg h && { scriptHelp; errorOut; }
+
+function addGlobalVHost
+{
+	if [ $# != 2 ]; then
+		echo -e "Invalid number of arguments should be: ${FUNCNAME} conf-prefix domain"
+		return 1
+	fi
+
+	appendFile "${1}/lighttpd.conf" "include \"host.d/${2}.conf\"" || return 2
+}
+
+function addInterfaceVHost
+{
+	if [ $# != 3 ]; then
+		echo -e "Invalid number of arguments should be: ${FUNCNAME} conf-prefix domain interface"
+		return 1
+	fi
+
+	appendFileBefore "${1}/listen.d/${3}.conf" "\}" "include \"host.d/${2}.conf\""
+}
+
+vhost=`valueArg "vhost"` || { scriptHelp; errorOut; }
+interface=`valueArg "iface"`
+
+owner=`getVariable "${sdir}/conf" "USER" "custom" "[A-Za-z]+[A-Za-z0-9]+"` || errorOut "Failed to get lighttpd owner user"
+group=`getVariable "${sdir}/conf" "GROUP" "custom" "[A-Za-z]+[A-Za-z0-9]+"` || errorOut "Failed to get lighttpd owner group"
+home=`getVariable "${sdir}/conf" "HOME" "path"` || errorOut "Failed to get lighttpd home directory"
+lightConf=`getVariable "${sdir}/conf" "LIGHTTPD_CONF" "path"` || errorOut "Failed to get lighttpd configuration directory"
+errlog=`getVariable "${sdir}/conf" "ERRLOG" "path"` || errorOut "Failed to get error log file location"
+
+checkDir "${home}" &> /dev/null || errorOut "lighttpd home directory does not exist"
+checkDir "${home}/${vhost}" &> /dev/null && errorOut "vhost server-root already exists"
+checkDir "${lightConf}" &> /dev/null || errorOut "lighttpd configuration directory does not exist"
+checkRead "${lightConf}/lighttpd.conf" &> /dev/null || errorOut "lighttpd configuration file does not exists"
+checkDir "${lightConf}/host.d" &> /dev/null || errorOut "lighttpd virtual hosts configuration directory does not exists"
+checkRead "${lightConf}/host.d/${vhost}.conf" &> /dev/null && errorOut "vhost configuration file already exist"
+
+if [ ! $( hasArg "iface" ) ]; then
+        if [ ! -z "$( cat "${lightConf}/lighttpd.conf" | grep -Eo -e "(include)[[:blank:]]+\"host.d/${vhost}.conf\"" )" ]; then
+                errorOut "include vhost:${vhost} already exist in main configuration file"
+        fi
+fi
+
+if [ $( hasArg "iface" ) ]; then
+	escHost=`regexpEscape "${vhost}"`
+	escIface=`regexpEscape "${interface}"`
+	if [ -z "$( ${sdir}/listinterface | grep -Eo -e "Interface:[[:blank:]]*${escIface}" )" ]; then
+		errorOut "No such listen interface:${interface}"
+	fi
+
+	if [ "$( cat "${lightConf}/listen.d/${interface}.conf" | grep -E -e "(include)[[:blank:]]+\"\.\./host\.d/${escHost}\"" )" ]; then
+		errorOut "Host:${vhost} already added to interface:${interface}"
+	fi
+fi
+
+copy "${sdir}/vhost.conf.tpl" "${lightConf}/host.d/${vhost}.conf" || errorOut "Failed to copy ${sdir}/vhost.conf.tpl to ${lightConf}/host.d/${vhost}.conf"
+setVariable "${lightConf}/host.d/${vhost}.conf" "HOST" "${vhost}" || errorOut "Failed to set HOST to ${vhost} in ${lightConf}/host.d/${vhost}.conf"
+setVariable "${lightConf}/host.d/${vhost}.conf" "HOME" "${home}" || errorOut "Failed to set HOME to ${lightConf}/host.d/${vhost}.conf"
+setVariable "${lightConf}/host.d/${vhost}.conf" "ERRLOG" "${errlog}" || errorOut "Failed to ERRLOG to set ${lightConf}/host.d/${vhost}.conf"
+touchFile "${lightConf}/host.d/${vhost}.conf" "${owner}" "${group}" "rw" "rw" "-" || errorOut "Failed to chown ${lightConf}/host.d/${vhost}.conf to ${owner}:${group}"
+
+###WHERE TO APPEND
+if [ -z "${interface}" ]; then
+	addGlobalVHost "${lightConf}" "${vhost}" || errorOut "Failed to add virtual host" || errorOut "Failed to add Global Virtual Host"
+fi
+
+if [ ! -z "${interface}" ]; then
+	addInterfaceVHost "${lightConf}" "${vhost}" "${interface}" || errorOut "Failed to add virtual host"
+fi
+
+touchDirectory "${home}/${vhost}" "${owner}" "${group}" || errorOut "Failed to chown ${home}/${vhost} to ${owner}:${group}"

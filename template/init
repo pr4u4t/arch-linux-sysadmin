@@ -1,0 +1,57 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+
+source "${sdir}/../include/utils"
+checkRead "${sdir}/conf" &> /dev/null || errorOut "Configuration file does not exist"
+initArg $@
+
+socksPort=`getVariable "${sdir}/conf" "SOCKS_PORT" "ipport"` || errorOut "Cant read SOCKS_PORT variable"
+owner=`getVariable "${sdir}/conf" "OWNER" "alpha"` || errorOut "Cant read OWNER variable"
+torHome=`getVariable "${sdir}/conf" "TOR_HOME" "path"` || errorOut "Cant read TOR_HOME variable"
+torConf=`getVariable "${sdir}/conf" "TOR_CONF" "path"` || errorOut "Cant TOR_CONF variable"
+socksPolicy=`getVariable "${sdir}/conf" "SOCKS_POLICY" "custom" "((accept|reject)[[:blank:]]){0,1}([*]|(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]))"` || errorOut "Cant read SOCKS_POLICY variable"
+addrIPv4Map=`getVariable "${sdir}/conf" "ADDR_IPV4_MAP" "ipmask"` || errorOut "Cant read ADDR_IPV4_MAP variable"
+automap=`getVariable "${sdir}/conf" "AUTOMAP_ON_RESOLVE" "bool"` || errorOut "Cant read AUTOMAP_ON_RESOLVE variable"
+dnsPort=`getVariable "${sdir}/conf" "DNS_PORT" "ipport"` || errorOut "Cant read DNS_PORT variable"
+transPort=`getVariable "${sdir}/conf" "TRANS_PORT" "ipport"` || errorOut "Cant read TRANS_PORT variable"
+
+#echo -e "${owner}"
+#echo -e "${torHome}"
+#echo -e "${home}"
+#echo -e "${torConf}"
+#echo -e "${socksPolicy}"
+#echo -e "${addrIPv4Map}"
+#echo -e "${automap}"
+#echo -e "${dnsPort}"
+#echo -e "${transPort}"
+
+checkProceed || errorOut
+echo -e "Configuring..."
+
+changeHome "${owner}" "${torHome}" &> /dev/null || errorOut "Failed to change directory of ${owner} to ${torHome}"
+
+copy "${sdir}/torrc" "${torConf}/torrc" || errorOut "Failed to copy ${sdir}/torrc to ${torConf}/torrc"
+
+setVariable "${torConf}/torrc" "TOR_HOME" "${torHome}" || errorOut "Failed to set variable TOR_HOME in ${torConf} to ${torHome}"
+setVariable "${torConf}/torrc" "SOCKS_PORT" "${socksPort}" || errorOut "Failed to set variable SOCKS_PORT in ${torConf} to ${socksPort}"
+setVariable "${torConf}/torrc" "SOCKS_POLICY" "${socksPolicy}" || errorOut "Failed to set variable SOCKS_POLICY in ${torConf} to ${socksPolicy}"
+setVariable "${torConf}/torrc" "ADDR_IPV4_MAP" "${addrIPv4Map}" || errorOut "Failed to set variable ADDR_IPV4_MAP in ${torConf} to ${addrIPv4Map}"
+setVariable "${torConf}/torrc" "AUTOMAP_ON_RESOLVE" "${automap}" || errorOut "Failed to set variable AUTOMAP_ON_RESOLVE in ${torConf} to ${automap}"
+setVariable "${torConf}/torrc" "DNS_PORT" "${dnsPort}" || errorOut "Failed to set variable DNS_PORT in ${torConf} to ${dnsPort}"
+setVariable "${torConf}/torrc" "TRANS_PORT" "${transPort}" || errorOut "Failed to set variable TRANS_PORT in ${torConf} to ${transPort}"
+
+echo -e "done"

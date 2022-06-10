@@ -1,0 +1,39 @@
+relay_domains = $mydestination
+virtual_alias_maps = proxy:${MAIL_DB_ENGINE}:${POSTFIX_DIR}/virtual_alias_maps.cf
+virtual_mailbox_domains = proxy:${MAIL_DB_ENGINE}:${POSTFIX_DIR}/virtual_mailbox_domains.cf
+virtual_mailbox_maps = proxy:${MAIL_DB_ENGINE}:${POSTFIX_DIR}/virtual_mailbox_maps.cf
+smtpd_sender_login_maps = proxy:${MAIL_DB_ENGINE}:${POSTFIX_DIR}/virtual_sender_login_maps.cf
+virtual_mailbox_base = ${MAIL_HOME}
+virtual_mailbox_limit = 512000000
+virtual_minimum_uid = ${MAIL_USER_ID}
+virtual_transport = virtual
+virtual_uid_maps = static:${MAIL_USER_ID}
+virtual_gid_maps = static:${MAIL_GROUP_ID}
+local_transport = virtual
+local_recipient_maps = $virtual_mailbox_maps
+transport_maps = hash:${POSTFIX_DIR}/transport
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = /var/run/dovecot/auth-client
+smtpd_recipient_restrictions =  permit_sasl_authenticated,
+				reject_unauth_destination
+smtpd_relay_restrictions =      permit_sasl_authenticated,
+				reject_unauth_destination
+smtpd_sender_restrictions =     reject_known_sender_login_mismatch,
+                                reject_sender_login_mismatch,
+                                reject_unauthenticated_sender_login_mismatch,
+                                permit
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_tls_security_options = $smtpd_sasl_security_options
+smtpd_use_tls = yes
+smtpd_tls_security_level = may
+smtpd_tls_auth_only = yes
+smtpd_tls_received_header = yes
+smtpd_tls_cert_file = /etc/ssl/private/vmail.crt
+smtpd_tls_key_file = /etc/ssl/private/vmail.key
+smtpd_sasl_local_domain = $mydomain
+broken_sasl_auth_clients = yes
+smtpd_tls_loglevel = 1
+smtp_header_checks = regexp:${POSTFIX_DIR}/smtp_header_checks
+smtpd_milters = unix:/run/clamav/clamav-milter.sock
+relayhost = ${RELAY_HOST}

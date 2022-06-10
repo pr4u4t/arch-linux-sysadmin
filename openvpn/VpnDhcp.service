@@ -1,0 +1,15 @@
+[Unit]
+Description=VpnDhcp %i
+After=openvpn_wait@client.service
+Requires=openvpn_wait@client.service
+
+[Service]
+#TimeoutStartSec=0
+#ExecStartPre=-/usr/bin/docker kill busybox1
+#ExecStartPre=-/usr/bin/docker rm busybox1
+#ExecStartPre=/usr/bin/docker pull busybox
+ExecStart=/usr/bin/dhcpcd %i
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,59 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Create database and user with password in specified postgres instance"
+	echo -e "Arguments:"
+	echo -e "-host database host"
+	echo -e "-port database port"
+	echo -e "-user master user"
+	echo -e "-dbname database name"
+	echo -e "-dbuser database user"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+
+initArg "$@"
+hasArg "h" && { scriptHelp; errorOut; }
+
+host=$( valueArg "host" ) || { scriptHelp; errorOut; }
+port=$( valueArg "port" ) || { scriptHelp; errorOut; }
+user=$( valueArg "user" ) || { scriptHelp; errorOut; }
+dbname=$( valueArg "dbname" ) || { scriptHelp; errorOut; }
+dbuser=$( valueArg "dbuser" ) || { scripthelp; errorOut; }
+
+declare dbpassEnter
+declare dbpassConfirm
+
+
+read -p "Enter new user password:" -s dbpassEnter
+echo
+read -p "Confirm new user password:" -s dbpassConfirm
+echo
+
+if [ "${dbpassEnter}" != "${dbpassConfirm}" ]; then
+	errorOut "Passwords do not match"
+fi
+
+buffer=$( cat "${sdir}/createDatabase.sql")
+buffer=$( echo -e "${buffer}" | sed -r "s#\\$\\{DB\\}#${dbname}#g" )
+buffer=$( echo -e "${buffer}" | sed -r "s#\\$\\{DB_USER\\}#${dbuser}#g" )
+buffer=$( echo -e "${buffer}" | sed -r "s#\\$\\{DB_PASSWORD\\}#${dbpassEnter}#g" )
+
+#echo -e "$buffer"
+
+echo -e "${buffer}" | psql -h "${host}" -p "${port}" -U "${user}"

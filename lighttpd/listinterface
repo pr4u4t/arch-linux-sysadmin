@@ -1,0 +1,44 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "List lighttpd listen interfaces and information about them"
+	echo -e "fg: listinterface"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+hasArg h && { scriptHelp; errorOut; }
+
+lightConf=`getVariable "${sdir}/conf" "LIGHTTPD_CONF" "path" || errorOut`
+
+checkDir "${lightConf}" &> /dev/null || errorOut "Lighttpd configuration directory:${lightConf} missing or not listable"
+checkDir "${lightConf}/listen.d" &> /dev/null || errorOut "Lighttpd listen directory:${lightConf} missing or not listable"
+
+if [ -z "$(ls -A "${lightConf}/listen.d")" ]; then
+     errorOut "Directory ${lightConf}/listen.d empty, no listen interface defined"
+fi
+
+ifacesConfs=`ls -lah "${lightConf}/listen.d" | awk '{ if(NR!=1) { print } }' | grep -Ev -e "(\.$)|(\.\.$)" | awk 'BEGIN { FS=" " } ; { print $9  }'`
+
+ifaceConfs=($ifacesConfs)
+
+for ifConf in "${ifacesConfs[@]}"
+do
+	tmp=`echo "${ifConf}" | sed "s#\.conf##g"`
+	${sdir}/interfaceinfo "-iface ${tmp}"
+done

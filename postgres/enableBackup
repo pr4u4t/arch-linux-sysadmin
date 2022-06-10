@@ -1,0 +1,39 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Initialize new postgresql cluster with given parameters"
+	echo -e "Arguments:"
+	echo -e "-name name"
+	echo -e "fg: enableBackup -name ProductionInstance"
+	#echo -e "-addr listen address"
+	#echo -e "-port listen port"
+	#echo -e "fg: init -db MailDB -addr localhost -port 2345"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; }
+hasArg h && { scriptHelp; errorOut; }
+
+name=`valueArg "name"` || errorOut "Instance name argument missing" 
+
+#pghome=`userHome "${owner}"` || errorOut "Failed to obtain user home directory"
+path=`getVariable "${sdir}/conf" "PATH" "path"` || errorOut "Failed to obtain user home directory path"
+
+appendFile "${path}/${name}/postgresql.conf" "archive_command = 'test ! -f ${path}/${name}/backup_in_progress || (test ! -f ${path}${name}/archive/%f && cp %p ${path}/${name}/archive/%f)'" || errorOut "Failed to append archive_command to ${path}/${name}/postgresql.conf"
+#appendFile "${path}/${name}/postgresql.conf" "port = ${port}" || errorOut "Failed to append port = ${port} to ${path}/${name}/postgresql.conf " 

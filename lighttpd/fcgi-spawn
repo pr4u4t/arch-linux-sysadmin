@@ -1,0 +1,32 @@
+#!/bin/bash
+
+## ABSOLUTE path to the spawn-fcgi binary
+SPAWNFCGI="/usr/local/sbin/spawn-fcgi" 
+
+## ABSOLUTE path to the PHP binary
+FCGIPROGRAM="/usr/local/bin/php" 
+
+## bind to tcp-port on localhost
+FCGIPORT="1026" 
+
+## bind to unix domain socket
+# FCGISOCKET="/tmp/php.sock" 
+## number of PHP childs to spawn
+PHP_FCGI_CHILDREN=10
+
+## number of request server by a single php-process until
+## is will be restarted
+PHP_FCGI_MAX_REQUESTS=1000
+
+## IP adresses where PHP should access server connections
+## from
+FCGI_WEB_SERVER_ADDRS="127.0.0.1,192.168.0.1" 
+
+# allowed environment variables separated by spaces
+ALLOWED_ENV="ORACLE_HOME PATH USER" 
+
+## if this script is run as root switch to the following user
+USERID=wwwrun
+GROUPID=wwwrun
+
+exec $SPAWNFCGI -a $FCGI_WEB_SERVER_ADDRS -p $FCGIPORT -f $FCGIPROGRAM -u $USERID -g $GROUPID

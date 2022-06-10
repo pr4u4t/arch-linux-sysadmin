@@ -1,0 +1,39 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg "$@"
+
+checkRead "${sdir}/conf" || errorOut "Configuration file missing"
+
+bindPath=`getVariable "${sdir}/conf" "BIND_PATH" "path"` || errorOut "Failed to read BIND_PATH variable from ${sdir}/conf"
+zoneDirectory=`getVariable "${sdir}/conf" "ZONE_DIRECTORY" "path"` || errorOut "Failed to read ZONE_DIRECTORY from ${sdir}/conf"
+
+checkDir "${zoneDirectory}" &> /dev/null || errorOut "zone directory does not exists or not listable"
+checkRead "${bindPath}/named.conf" &> /dev/null || errorOut "Bind configuration file does not exists"
+
+zones=$( ls -lah "${zoneDirectory}" | grep -Ev -e "empty\.zone" | grep -Ev -e "127\.0\.0\.zone" | grep -Ev -e "root\.(zone|hint)" | grep -Ev -e "localhost\.(ip6\.)*zone" | awk 'BEGIN { FS=" " } ; { print $9 }' | grep -Ev -e "(\.$)|(\.\.)$" | awk '{ if (NR!=1) { print } }' )
+
+#echo -e "$zones"
+
+zones=( $( echo -e "${zones}" | grep -Ev -e "\..+\.swp" ) )
+
+#echo -e "${zones[@]}"
+
+for zone in "${zones[@]}"
+do
+	${sdir}/zoneinfo -name "${zone}"
+done

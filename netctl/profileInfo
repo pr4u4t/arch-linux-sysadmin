@@ -1,0 +1,47 @@
+#!/bin/bash
+
+function scriptDir
+{    
+        SOURCE="${BASH_SOURCE[0]}"
+    
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+        echo -e "Display info about netctl profile given by parameter name"
+}
+
+sdir=`scriptDir`
+
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; }
+hasArg "h" && { scriptHelp; errorOut; }
+
+path=`getVariable "${sdir}/conf" "NETCTL_PATH" "path"` || errorOut "NETCTL_PATH missing in config file"
+name=`valueArg "name"` || { scriptHelp; errorOut; }
+
+#echo -e "${path}"
+
+checkRead "${path}/${name}" &> /dev/null || errorOut "No such profile:$name"
+
+echo -e "${name}:"
+tmp=$( cat "${path}/${name}" | grep -Eo -e "Description='[A-Za-z0-9\., ]+'" | grep -Eo -e "'[A-Za-z0-9\., ]+'" | grep -Eo -e "[A-Za-z0-9\., ]+" )
+echo -e "\tDescription:${tmp}"
+tmp=$( cat "${path}/${name}" | grep -Eo -e "Interface=[A-Za-z0-9\.]+" | grep -Eo -e "=[A-Za-z0-9\.]+" | grep -Eo -e "[A-Za-z0-9\.]+" )
+echo -e "\tInterface:${tmp}"
+tmp=$( cat "${path}/$name" | grep -Eo -e "Connection=(ethernet|tuntap|bridge)" | grep -Eo -e "(ethernet|tuntap|bridge)")
+echo -e "\tConnection:${tmp}"
+tmp=$( cat "${path}/${name}" | grep -Eo -e "IP=(static|dhcp)" | grep -Eo -e "static|dhcp")
+echo -e "\tIP:${tmp}"
+if [ "${tmp}" == "static" ]; then 
+	tmp=$( cat "${path}/${name}" | grep -Eo -e "Address=\('(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/)((3[0-2])|(2[0-9])|(1[0-9])|[1-9])'\)" | grep -Eo -e "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/)((3[0-2])|(2[0-9])|(1[0-9])|[1-9])")
+	echo -e "\tIP:${tmp}"
+fi

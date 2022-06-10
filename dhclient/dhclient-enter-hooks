@@ -1,0 +1,2 @@
+#!/bin/bash
+function make_resolv_conf(){}

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+mdadm --detail-platform

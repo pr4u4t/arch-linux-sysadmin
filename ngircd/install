@@ -1,0 +1,38 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+
+checkInstall postgresql-libs
+
+spath=`getVariable "${sdir}/conf" "SYSTEMD_PATH" "path"` || errorOut "Failed to get systemd service path"
+bpath=`getVariable "${sdir}/conf" "BIN_PATH" "path"` || errorOut "Failed to get ngircd binary path"
+cpath=`getVariable "${sdir}/conf" "CONF_PATH" "path"` || errorOut "Failed to get ngircd configuration path"
+usr=`getVariable "${sdir}/conf" "IRC_USER" "user"` || errorOut "Failed to get irc owner user"
+grp=`getVariable "${sdir}/conf" "IRC_GROUP" "group"` || errorOut "Failed to get irc owner group"
+
+checkRead "${sdir}/ngircd" || errorOut "ngircd binary does not exists in ${sdir}"
+checkRead "${sdir}/ngircd.service.tpl" || errorOut "ngircd.service.tpl does not exist in ${sdir}"
+checkWrite "${spath}" || errorOut "systemd service path is not writeable ${spath}"
+
+checkUserExist "${usr}" || { addUser "${usr}" || errorOut "Failed to add user ${usr}"; }
+checkGroupExist "${grp}" || { addGroup "${grp}" || errorOut "Failed to add group ${grp}"; }
+
+touchDirectory "${cpath}" "${usr}" "${grp}" "rw" "rw" "-" || errorOut "Failed to touch directory "
+
+copy "${sdir}/ngircd" "${bpath}" || errorOut "Failed to copy ngircd binary to ${bpath}"
+copy "${sdir}/ngircd.service.tpl" "${spath}/ngircd.service"
+setVariable "${spath}/ngircd.service" "CONF_PATH" "${cpath}/ngircd.conf" || errorOut "Failed to set CONF_PATH in ${spath}/ngircd.service"

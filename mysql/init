@@ -1,0 +1,70 @@
+#!/bin/bash
+
+#This file is part of sysadmin linux admnistration utility 
+#All right reserved to robco.pl
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+
+source "${sdir}/../include/utils"
+checkRead "${sdir}/conf" &> /dev/null || errorOut "Configuration file does not exist"
+initArg $@
+
+function scriptHelp
+{
+	echo -e "Initialize mysql database"
+	echo -e "-name name of instance"
+	echo -e "-port port to listen for incoming connections"
+	echo -e "-sock pipe to listen"
+}
+
+sizeArg || { scriptHelp; errorOut; }
+hasArg h && { scriptHelp; errorOut; }
+
+owner=`getVariable "${sdir}/conf" "OWNER" "user"` || errorOut "Failed to get instance owner"
+group=`getVariable "${sdir}/conf" "GROUP" "user"` || errorOut "Faild to get instance group"
+baseDir=`getVariable "${sdir}/conf" "BASE_DIR" "path"` || errorOut "Failed to get mysql home directory"
+homeDir=`getVariable "${sdir}/conf" "HOME_DIR" "path"` || errorOut "Failed to get mysql home directory"
+systemDir=`getVariable "${sdir}/conf" "SYSTEMD" "path"` || errorOut "Failed to get systemd directory"
+restartPolicy=`getVariable "${sdir}/conf" "RESTART_POLICY" "text"` || errorOut "Failed to get restart policy"
+privTemp=`getVariable "${sdir}/conf" "PRIVATE_TEMP" "boolean"` || errorOut "Failed to get temporary directory policy"
+
+name=`valueArg "name"` || errorOut "Failed to get database instance name"
+port=`valueArg "port"`
+sock=`valueArg "sock"`
+
+[[ -z "${port}"  &&  -z "${sock}" ]] && errorOut "At least socket or port must be specified"
+
+checkUserExist "${owner}" &> /dev/null || errorOut "Specified owner does not exist"
+touchDirectory "${homeDir}" "${owner}" "${group}" "rwx" "rwx" "-" &> /dev/null || errorOut "Failed to create mysql home directory"
+changeHome "${owner}" "${homeDir}" &> /dev/null || errorOut "Failed to change ${owner} home directory to ${homeDir}"
+touchDirectory "${homeDir}/${name}" "${owner}" "${group}" &> /dev/null || errorOut "Failed to touch directory"
+
+copy "${sdir}/my.cnf.tpl" "${homeDir}/${name}/my.cnf" || errorOut "Failed to copy ${sdir}/my.cnf.tpl to ${homeDir}/${name}/my.cnf"
+tmp=""
+[ ! -z "${port}" ] && tmp="port = ${port}\n"
+[ ! -z "${sock}" ] && tmp="${tmp}socket = ${sock}\n"
+setVariable "${homeDir}/${name}/my.cnf" "LISTEN" "${tmp}" || errorOut "Failed to set listen variable in ${homeDir}/${name}/my.cnf"
+
+copy "${sdir}/mysqld.service.tpl" "${systemDir}/system/mysqld-${name}.service" || errorOut "Failed to copy ${sdir}/mysqld.service.tpl to ${systemDir}/system/mysqld-${name}.service"
+setVariable "${systemDir}/system/mysqld-${name}.service" "USER" "${owner}" || errorOut "Failed to set ${systemDir}/system/mysqld-${name}.service"
+setVariable "${systemDir}/system/mysqld-${name}.service" "GROUP" "${group}" || errorOut "Failed to set ${systemDir}/system/mysqld-${name}.service"
+setVariable "${systemDir}/system/mysqld-${name}.service" "NAME" "${name}" || errorOut "Failed to set ${systemDir}/system/mysqld-${name}.service"
+setVariable "${systemDir}/system/mysqld-${name}.service" "HOME_DIR" "${homeDir}" || errorOut "Failed to set ${systemDir}/system/mysqld-${name}.service"
+
+mysql_install_db --user=${owner} --basedir=${baseDir} --datadir=${homeDir}/${name} || errorOut "Failed to initialize mysql database in ${homeDir}/${name}"
+systemctl start "mysqld-${name}" || errorOut "Failed to start mysqld-${name} service"
+mysql_secure_installation --defaults-file=${homeDir}/${name}/my.cnf --basedir=${baseDir}
+   

@@ -1,0 +1,44 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+tmpFile="dump-tmp.sql"
+
+function scriptHelp
+{
+        echo -e "Execute query in specified postgres instance"
+        echo -e "Arguments:"
+        echo -e "-host database host"
+        echo -e "-port database port"
+        echo -e "-dbNameIn database name"
+	echo -e "-dbNameOut database name"
+        echo -e "-user database user"
+}
+
+initArg "$@"
+hasArg "h" && { scriptHelp; errorOut; }
+
+host=$( valueArg "host" ) || { scriptHelp; errorOut; }
+port=$( valueArg "port" ) || { scriptHelp; errorOut; }
+dbNameIn=$( valueArg "dbNameIn" ) || { scriptHelp; errorOut; }
+dbNameOut=$( valueArg "dbNameOut" ) || { scriptHelp; errorOut; }
+user=$( valueArg "user" ) || { scripthelp; errorOut; }
+
+mysqldump -p -h ${host} -u ${user} -P ${port} "$dbNameIn" > ${tmpFile}
+mysqladmin -p -h ${host} -u ${user} -P ${port} create "${dbNameOut}"
+mysql -p -h ${host} -u ${user} -P ${port} "${dbNameOut}" < ${tmpFile}
+
+[ -f "${scriptDir}/${tmpFile}" ] && rm -f ${tmpFile}

@@ -1,0 +1,62 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+		# if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Initialize new postgresql cluster with given parameters"
+	echo -e "Arguments:"
+	echo -e "-db name"
+	echo -e "-addr listen address"
+	echo -e "-port listen port"
+	echo -e "fg: init -db MailDB -addr localhost -port 2345"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; }
+hasArg h && { scriptHelp; errorOut; }
+
+name=`valueArg "db"` || errorOut "Database argument missing" 
+addr=`valueArg "addr"` || errorOut "Listen address argument missing"
+port=`valueArg "port"` || errorOut "Listen port argument missing"
+
+owner=`getVariable "${sdir}/conf" "OWNER" "user"` || errorOut "Failed to parse user home directory"
+
+checkUserExist "${owner}" || errorOut "Specified owner does not exist"
+
+#pghome=`userHome "${owner}"` || errorOut "Failed to obtain user home directory"
+path=`getVariable "${sdir}/conf" "PATH" "path"` || errorOut "Failed to obtain user home directory path"
+
+changeHome "${owner}" "${path}" || errorOut "Failed to change user home directory to specified path"
+touchDirectory "${path}" "${owner}" "${owner}" "rwx" "rwx" "-" || errorOut "Failed to create and change permissions on user home directory ${path}"
+checkDir "${path}/${name}" &> /dev/null && errorOut "Postgres instance directory already exists"
+serviceFile "postgresql-${name}" &> /dev/null && errorOut "Postgres instance service file already exist"
+touchDirectory "${path}/${name}" "${owner}" "${owner}" "rwx" "rwx" "-" || errorOut "Failed to create and set permissions on instance directory ${path}/${name}"
+
+#echo -e "su  - ${owner} -c \"initdb --locale en_US.UTF-8 -E UTF8 -D \"${path}/${name}\" -A md5 -W\""
+#errorOut
+
+su - "${owner}" -c "initdb --locale en_US.UTF-8 -E UTF8 -D \"${path}/${name}\" -A md5 -W || ( echo -e \"Failed to initialize database cluster\" && exit 2 )"
+tmp=`toUpper "${name}"`
+
+copy "${sdir}/postgresql.service" "/etc/systemd/system/postgresql-${name}.service" || errorOut "Failed to copy postgresql.service file ${sdir}/postgresql.service to /etc/systemd/system/postgresql-${name}.service" 
+
+setVariable "/etc/systemd/system/postgresql-${name}.service" "PG_ROOT" "${path}/${name}" || errorOut "Failed to set variable PG_ROOT to ${path}/${name} in /etc/systemd/system/postgresql-${name}.service"
+setVariable "/etc/systemd/system/postgresql-${name}.service" "PG_ROOT_NAME" "PG_${tmp}" || errorOut "Failed to set variable PG_ROOT_NAME to PG_${tmp} in /etc/systemd/system/postgresql-${name}.service"
+
+appendFile "${path}/${name}/postgresql.conf" "listen_addresses = '${addr}'" || errorOut "Failed to append listen_addresses = '${addr}' to ${path}/${name}/postgresql.conf"
+appendFile "${path}/${name}/postgresql.conf" "port = ${port}" || errorOut "Failed to append port = ${port} to ${path}/${name}/postgresql.conf " 

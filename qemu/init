@@ -1,0 +1,48 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+
+source "${sdir}/../include/utils"
+initArg $@
+
+path=`getVariable "${sdir}/conf" "VPS_PATH" "path"` || errorOut "Failed to get vps path variable"
+owner=`getVariable "${sdir}/conf" "VPS_OWNER" "user"` || errorOut "Failed to get vps owner"
+
+#echo "${path}"
+#echo "${owner}"
+
+checkUserExist "${owner}" || { echo -e "User: ${owner} does not exist attempting to add"; addUser "${owner}" || errorOut "Failed to add user:${owner}"; }
+
+touchDirectory "${path}" "${owner}" || errorOut "Failed to create vps directory"
+touchDirectory "${path}/bin" "${owner}" || errorOut "Failed to create vps bin directory"
+touchDirectory "${path}/socket" "${owner}" || errorOut "Failed to create vps socket directory"
+touchDirectory "${path}/vm" "${owner}" || errorOut "Failed to create vps vm directory"
+
+
+tarFiles=( $(tar -jtvf vps_bin.tar.bz2 | awk 'BEGIN { FS=" " } ; { print $6 }') )
+lsFiles=( $(ls -lAh "${path}/bin" | awk '{ if(NR!=1) { print } }') )
+
+#echo -e ${tarFiles[@]}
+#echo -e ${lsFiles[@]}
+
+tarFiles=$(echo "${tarFiles[@]}")
+lsFiles=$(echo "${lsFiles[@]}")
+
+if [ ! -z "$( arrayDiff "$tarFiles" "$lsFiles" )" ]; then
+	tar -xjf  "${sdir}/vps_bin.tar.bz2" -C "${path}/bin" || errorOut "Failed to untar vps bin directory"
+fi
+
+replaceInFile "/etc/paxd.conf" "(em)[[:blank:]]+(/usr/bin/qemu-system-x86_64)" "EM /usr/bin/qemu-system-x86_64"

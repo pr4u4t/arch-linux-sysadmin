@@ -1,0 +1,115 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+        echo -e "Start firewall"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+source "${sdir}/include"
+
+function defaultWall
+{
+	clearIpTablesRules
+        defaultIpTablesRules DROP
+        acceptLoopback
+	acceptTrafficForUser root	
+	allowTrafficToPort 22 tcp
+}
+
+function wall
+{
+	check clearIpTablesRules
+	check defaultIpTablesRules DROP
+	check acceptLoopback
+
+	#check ${sdir}/block_kiddies
+	#check ${sdir}/block_china
+
+	#check acceptTrafficForUser $torUser
+	#check acceptTrafficForUser http
+	check acceptTrafficForUser root
+	#check acceptTrafficForUser nobody
+	check acceptTrafficForUser tor
+	#check acceptTrafficForUser clamav
+	#check acceptTrafficForUser dovecot
+	#check acceptTrafficForUser postfix
+	#check acceptTrafficForUser opendmarc
+	#check acceptTrafficForUser opendkim
+	#check acceptTrafficForUser mysql
+	#check acceptTrafficForUser postgres
+	#check acceptTrafficForUser spamd
+	check acceptTrafficForUser prauat
+	#check acceptTrafficForUser niunia
+
+	check allowTrafficToPort 22 tcp 
+	#check allowTrafficToPort 25 tcp
+	#check allowTrafficToPort 993 tcp
+	#check allowTrafficToPort 143 tcp
+	check allowTrafficToPort 53 udp 
+	#check allowTrafficToPort 1194 udp
+	#check allowTrafficToPort 1195 udp
+	#check allowTrafficToPort 587 tcp
+	#check allowTrafficToPort 53 tcp 
+	#check allowTrafficToPort 80 tcp 
+	#check allowTrafficToPort 4190 tcp
+	#check allowTrafficToPort 1194 tcp
+	#check allowTrafficToPort 5001 tcp	
+	check allowTrafficToPort 5353 udp
+	#check allowTrafficToPort 67 udp
+	#check allowTrafficToPort 5900 tcp 192.168.0.0/16
+	#check allowTrafficToPort 80 tcp
+	check allowTrafficToPort 9040 tcp
+	check allowTrafficToPort 9050 tcp
+	#check allowTrafficToPort 445 tcp
+	#check allowTrafficToPort 139 tcp
+	#check allowTrafficToPort 21 tcp
+	#check allowTrafficToPort 137 tcp
+	#check allowTrafficToPort 138 tcp
+	#check allowTrafficToPort 139 tcp
+	#check allowTrafficToPort 445 tcp
+	#check allowTrafficToPort 143 tcp
+	#check allowTrafficToPort 993 tcp
+	#check allowTrafficToPort 25 tcp 
+
+	#check redirectFromNotToAddressPort 192.168.32.0/19 192.168.0.0/16 192.168.31.254 80 tcp
+
+	#check setNatIpTablesRules enp1s5 enp1s3 192.168.129.0/24
+
+	#check setNatIpTablesRules enp2s0 enp4s0 192.168.129.0/24
+	#check setNatIpTablesRules enp2s0 WanBridge 192.168.141.0/24
+	#check setNatIpTablesRules enp2s0 LanBridge 192.168.140.0/24
+
+	#check filterPing 192.168.0.0/16 192.168.0.0/16
+
+	#check setNatIpTablesRules wlp2s0 enp0s20f0u2 0.0.0.0/0
+
+	#iptables -t mangle -A PREROUTING -i enp3s0 -j TTL --ttl-inc 1
+	
+	#iptables -t nat -A PREROUTING -s 10.0.0.1/8 -d 10.0.0.1 -p 53 -j DNAT --to-destination 192.168.8.1:53
+
+	#check acceptTrafficForUser named
+	#	check redirectTrafficToTorNet enp3s0 192.168.222.2/32 $onionNet $torDns $torPort
+	check redirectAllFromUserToTor tored $onionNet $torPort $torDns
+	#check redirectAllFromUserToTor bitcoinw $onionNet $torPort $torDns
+	#check bridgeInterfaces tun0 192.168.28.0/22 tap0 192.168.44.4/32 UDP
+	#check redirectAllTrafficToTor $onionNet $torPort $torDns $torUser
+
+	#iptables -t nat -A PREROUTING -p tcp -d 188.122.10.34 --dport 80 -j DNAT --to-destination 192.168.140.34
+}
+
+wall

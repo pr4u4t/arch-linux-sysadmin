@@ -1,0 +1,141 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Add dns zone to bind specified by -domain,-ztype,-stype"
+	echo -e "Arguments:"
+	echo -e "-domain domain name"
+	echo -e "-ztype (primary|secondary) primary zone is zone with its own dns servers, and mx hosts,\r\n\tsecondary zone inherits dns servers and mx host from primary zone"
+	echo -e "-stype (master|slave) whether this zone should be master or slave"
+	echo -e "-master if zone type is slave master server address must be specified"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg "$@"
+sizeArg || { scriptHelp; errorOut; }
+hasArg h && { scriptHelp; errorOut; }
+
+domainName=`valueArg "domain"` || { scriptHelp; errorOut; }
+zoneType=`valueArg "ztype"` || { scriptHelp; errorOut; }
+serverType=`valueArg "stype"` || { scriptHelp; errorOut; }
+masters=`valueArg "master"` || { [[ "${serverType}" == "slave" ]] && errorOut "master server address must be speciified if zone is secondary"; }
+
+if [[ "${zoneType}" != "primary" && "${zoneType}" != "secondary" ]]; then
+	errorOut "Invalid argument type should be primary or secondary got: ${zoneType}"
+	
+fi
+
+#if [[ "${stype}" == "slave" ]]; then
+#
+#fi
+
+bindPath=`getVariable "${sdir}/conf" "BIND_PATH" "path"`
+zoneDirectory=`getVariable "${sdir}/conf" "ZONE_DIRECTORY" "path"`
+
+#echo "bind path: ${bindPath}"
+#echo "zone directory: ${zonePath}"
+
+tmp=`regexpEscape "${domainName}"`
+tmp=`cat "${bindPath}/named.conf" | grep -Eo -e "(zone)[[:blank:]]+\"${tmp}\"[[:blank:]]+\{[[:blank:]]+(type)[[:blank:]]+(master|slave);[[:blank:]]+(file)[[:blank:]]+\"${zoneDirectory}/${tmp}\";[[:blank:]]+\};"`
+if [ ! -z "${tmp}" ]; then
+	echo -e "Reference to the zone:${domainName} already exist in ${bindPath}/named.conf"
+	exit
+fi
+
+checkDir "${zoneDirectory}" &> /dev/null || errorOut "zone directory doesnt exists or not listable"
+checkRead "${bindPath}/named.conf" &> /dev/null || errorOut "Bind configuration file does not exist"
+checkRead "${zoneDirectory}/${domainName}" &> /dev/null && errorOut "zone file for ${1} already exist"
+
+owner=`getVariable "${sdir}/conf" "USER" "user"`
+group=`getVariable "${sdir}/conf" "GROUP" "user"`
+ttl=`getVariable "${sdir}/conf" "DEFAULT_TTL" "custom" "([0-9]+)(m|h|d|w)*"`
+soaTtl=`getVariable "${sdir}/conf" "DEFAULT_SOA_TTL" "custom" "([0-9]+)(m|h|d|w)*"`
+masterEmail=`getVariable "${sdir}/conf" "DEFAULT_EMAIL" "lower"`
+refresh=`getVariable "${sdir}/conf" "DEFAULT_REFRESH" "custom" "([0-9]+)(m|h|d|w)*"`
+retry=`getVariable "${sdir}/conf" "DEFAULT_RETRY" "custom" "([0-9]+)(m|h|d|w)*"`
+expire=`getVariable "${sdir}/conf" "DEFAULT_EXPIRE" "custom" "([0-9]+)(m|h|d|w)*"`
+minimum=`getVariable "${sdir}/conf" "DEFAULT_MINIMUM" "custom" "([0-9]+)(m|h|d|w)*"`
+www=`getVariable "${sdir}/conf" "DEFAULT_WWW" "ip"`
+
+#echo "TTL:${ttl}"
+#echo "soaTTL${soaTtl}"
+#echo "MAIL:${masterEmail}"
+#echo "refresh:${refresh}"
+#echo "retry:${retry}"
+#echo "expire:${expire}"
+#echo "minimum:${minimum}"
+#echo "www:${www}"
+
+serial=`date +%Y%m%d`
+serial="${serial}01"
+
+#echo "serial:${serial}"
+
+if [[ "${zoneType}" == "primary" && "${serverType}" == "master" ]]; then
+	primaryDns=`getVariable "${sdir}/conf" "DEFAULT_PRIMARY_DNS" "ip"`
+	secondaryDns=`getVariable "${sdir}/conf" "DEFAULT_SECONDARY_DNS" "ip"`
+	mx=`getVariable "${sdir}/conf" "DEFAULT_MX" "ip"`
+
+	#echo "primary dns:${primaryDns}"
+	#echo "secondary dns:${secondaryDns}"
+	#echo "mx:${mx}"	
+
+	copy "${sdir}/zone_primary.tpl" "${zoneDirectory}/${domainName}" || errorOut
+	touchFile "${zoneDirectory}/${domainName}" "${user}" "${group}" 
+
+	setVariable "${zoneDirectory}/${domainName}" "PRIMARY_DNS" "${primaryDns}"
+	setVariable "${zoneDirectory}/${domainName}" "SECONDARY_DNS" "${secondaryDns}"
+	setVariable "${zoneDirectory}/${domainName}" "MX" "${mx}"
+fi
+
+if [[ "${zoneType}" == "secondary" && "${serverType}" == "master" ]]; then
+	primaryDnsName=`getVariable "${sdir}/conf" "DEFAULT_PRIMARY_DNS_NAME" "custom" "([a-z0-9]+\.)+[a-z]+"` || errorOut 
+	secondaryDnsName=`getVariable "${sdir}/conf" "DEFAULT_SECONDARY_DNS_NAME" "custom" "([a-z0-9]+\.)+[a-z]+"` || errorOut 
+	mxName=`getVariable "${sdir}/conf" "DEFAULT_MX_NAME" "custom" "([a-z0-9]+\.)+[a-z]+"` || errorOut 
+
+	#echo "primary dns name:${primaryDnsName}"
+	#echo "secondary dns name:${secondaryDnsName}"
+	#echo "mx name:${mxName}"
+
+	copy "${sdir}/zone_secondary.tpl" "${zoneDirectory}/${domainName}" || errorOut
+	touchFile "${zoneDirectory}/${domainName}" "${user}" "${group}" || errorOut 
+
+	setVariable "${zoneDirectory}/${domainName}" "PRIMARY_DNS_NAME" "${primaryDnsName}" || errorOut "Failed to set variable PRIMARY_DNS_NAME to ${primaryDnsName} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "SECONDARY_DNS_NAME" "${secondaryDnsName}" || errorOut "Failed to set variable SECONDARY_DNS_NAME to ${secondaryDnsName} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "MX_NAME" "${mxName}" || errorOut "Failed to set variable MX_NAME to ${mxName} in ${zoneDirectory}/${domainName}"
+fi
+
+if [ "${serverType}" == "master" ]; then
+	appendFile "${bindPath}/named.conf" "zone \"${domainName}\" { type ${serverType}; file \"${zoneDirectory}/${domainName}\"; };" || errorOut "Failed to append zone entry to ${bindPath}/named.conf"
+else
+	appendFile "${bindPath}/named.conf" "zone \"${domainName}\" { type "${serverType}"; file \"${zoneDirectory}/${domainName}\"; masters { ${masters}; }; };" || errorOut "Failed to append zone entry to ${bindPath}/named.conf"
+fi
+
+touchFile "${bindPath}/named.conf" "${user}" "${group}"
+
+if [ "${serverType}" == "master" ]; then
+	setVariable "${zoneDirectory}/${domainName}" "TTL" "${ttl}" || errorOut "Failed to set variable TTL to ${ttl} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "SOA_TTL" "${soaTtl}" || errorOut "Failed to set variable SOA_TTL to ${soaTtl} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "MASTER_EMAIL" "${masterEmail}" || errorOut "Failed to set variable MASTER_EMAIL to ${masterEmail} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "DOMAIN_NAME" "${domainName}" || errorOut "Failed to set variable DOMAIN_NAME to ${domainName} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "SERIAL" "${serial}" || errorOut "Failed to set variable SERIAL to ${serial} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "REFRESH" "${refresh}" || errorOut "Failed to set variable REFRESH to ${refresh} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "RETRY" "${retry}" || errorOut "Failed to set variable RETRY to ${retry} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "EXPIRE" "${expire}" || errorOut "Failed to set variable EXPIRE to ${expire} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "MINIMUM" "${minimum}" || errorOut "Failed to set variable MINIMUM to ${minimum} in ${zoneDirectory}/${domainName}"
+	setVariable "${zoneDirectory}/${domainName}" "WWW" "${www}" || errorOut "Failed to set variable WWW to ${www} in ${zoneDirectory}/${domainName}"
+fi

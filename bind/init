@@ -1,0 +1,43 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+
+checkRead "${sdir}/conf" || errorOut "Configuration file missing"
+
+conf=`getVariable "${sdir}/conf" "BIND_PATH" "path"` || errorOut "Failed to obtain bind configuration directory"
+zoneDirectory=`getVariable "${sdir}/conf" "DIRECTORY" "path"` || errorOut "Failed to obtain bind zone directory"
+pid=`getVariable "${sdir}/conf" "PID" "path"` || errorOut "Fauled to obtain pid file location"
+allowQuery=`getVariable "${sdir}/conf" "ALLOW_QUERY" "custom" "(([0-9\.; /]+)|(none;))"` || errorOut "Failed to obtain allow query list"
+allowRecursion=`getVariable "${sdir}/conf" "ALLOW_RECURSION" "custom" "(([0-9/\.; /]+)|(none;))"` || errorOut "Failed to obtain allow recursion list"
+allowTransfer=`getVariable "${sdir}/conf" "ALLOW_TRANSFER" "custom" "(([0-9/\.; /]+)|(none;))"` || errorOut "Failed to obtain allow transfer list"
+allowUpdate=`getVariable "${sdir}/conf" "ALLOW_UPDATE" "custom" "(([0-9/\.; /]+)|(none;))"` || errorOut "Failed to obtain allow update list"
+allowIPv6=`getVariable "${sdir}/conf" "ALLOW_IPV6" "boolean"`
+
+#echo $allowIPv6
+
+checkProceed || errorOut
+
+checkWrite "${conf}/named.conf" || errorOut "File: ${conf}/named.conf is not writeable"
+copy "${sdir}/named.conf" "${conf}/named.conf" || errorOut "Failed to copy ${sdir}/named.conf -> ${conf}/named.conf"
+
+setVariable "${conf}/named.conf" "ZONE_DIRECTORY" "${zoneDirectory}" || errorOut "Failed to set zone directory"
+setVariable "$conf/named.conf" "PID" "${pid}" || errorOut "Failed to set pid file location"
+setVariable "${conf}/named.conf" "ALLOW_QUERY" "${allowQuery}" || errorOut "Failed to set allow query list"
+setVariable "${conf}/named.conf" "ALLOW_RECURSION" "${allowRecursion}" || errorOut "Failed to set allow recuursion list"
+setVariable "${conf}/named.conf" "ALLOW_TRANSFER" "${allowTransfer}" || errorOut "Failed to set allow transfer list"
+setVariable "${conf}/named.conf" "ALLOW_UPDATE" "${allowUpdate}" || errorOut "Failed to set allow update list"

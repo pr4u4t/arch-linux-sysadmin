@@ -1,0 +1,33 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "List virtual hosts configured in lighttpd and display information about them"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+hasArg h && { scriptHelp; errorOut; }
+
+lightConf=`getVariable "${sdir}/conf" "LIGHTTPD_CONF" "path"` || errorOut "Failed to get lighttpd.conf file location"
+hosts=( $( ls -lAh "${lightConf}/host.d/" | awk '{ if(NR!=1) { print } }'| awk 'BEGIN { FS=" " } ; { print $9 }' ) )
+
+for host in ${hosts[@]} 
+do
+	host=`echo "${host}" | sed "s#\.conf##g"`
+	${sdir}/vhostinfo "-vhost ${host}"
+done

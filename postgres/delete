@@ -1,0 +1,47 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Delete postgresql database cluster specified by -db"
+	echo -e "Arguments:"
+	echo -e "-db name"
+	echo -e "fg: delete -db MailDB"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; } 
+hasArg h && { scriptHelp; errorOut; }
+
+name=`valueArg db` || errorOut "-db argument missing"
+path=`getVariable "${sdir}/conf" "PATH" "path" || errorOut`
+dbstatus=`serviceStatus "postgresql-${name}.service" || errorOut`
+
+checkProceed "Warning this would delete postgresql instance: ${name}" || errorOut
+
+if [ -f "/etc/systemd/system/postgresql-${name}.service" ]; then
+	if [ "$dbstatus" = "active" ]; then
+		systemctl stop postgresql-${name}.service &> /dev/null || errorOut "Failed to stop postgresql-${name}.service"
+	fi
+	rm -f /etc/systemd/system/postgresql-${name}.service &> /dev/null || errorOut "Failed to delete /etc/systemd/system/postgresql-${name}.service"
+fi
+
+if [ "${path}/${name}" != "/" ]; then
+	if [ -d "${path}/${name}" ]; then
+		rm -rf "${path}/${name}" &> /dev/null || errorOut "Failed to delete ${path}/${name} postgresql instance directory"
+	fi
+fi

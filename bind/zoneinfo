@@ -1,0 +1,84 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located        
+	done
+
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Display information about dns zone"
+	echo -e "Arguments:"
+	echo -e "-name dns zone name"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg "${@}"
+sizeArg || { scriptHelp; errorOut; }
+hasArg "h" && { scriptHelp; errorOut; }
+domainName=$( valueArg "name" ) || errorOut "Domain name missing"
+
+checkRead "${sdir}/conf" &> /dev/null || errorOut "Configuration file missing"
+
+#if [ $# != 1 ]; then
+#	errorOut "Invalid number of arguments should be: domain-name"
+#fi
+
+conf=`getVariable "${sdir}/conf" "BIND_PATH" "path"` || errorOut "Failed to read variable BIND_PATH"
+zoneDirectory=`getVariable "${sdir}/conf" "DIRECTORY" "path"` || errorOut "Failed to read variable DIRECTORY"
+
+checkDir "${zoneDirectory}" &> /dev/null || errorOut "Zone directory does not exist"
+
+domainEsc=`regexpEscape "${domainName}"`
+if [ -z "$( ls -lAh "${zoneDirectory}" | awk '{ if(NR!=1) { print } }' | awk 'BEGIN { FS=" " } ; { print $9 }' | grep -E -e "${domainEsc}" )" ]; then
+	errorOut "Specified zone:${domainName} not found"
+fi
+
+buffer=( $( cat "${zoneDirectory}/${domainName}" ) )
+
+defTTL=`echo -e "${buffer[@]}" | grep -Eo -e "TTL[[:blank:]]+[0-9]+(s|m|h|d){0,1}" | grep -Eo -e "[0-9]+(s|m|h|d){0,1}"`
+
+tmp=`echo -e "${buffer[@]}" | grep -Eo -e "(SOA)[[:blank:]]+([a-z0-9-]+\.)+[a-z]+\.[[:blank:]]+([a-z0-9-]+\.)+[a-z]+\."`
+masterDns=`echo -e "${tmp}" | awk 'BEGIN { FS=" " } ; { print $2 }'`
+masterMail=`echo -e "${tmp}" | awk 'BEGIN { FS=" "} ; { print $3 }'`
+
+tmp=`echo "${buffer[@]}" | grep -Eo -e "\(([[:blank:]]*[0-9]+(s|m|h|d){0,1}[[:blank:]]*)+\)"`
+serial=`echo -e "${tmp}" | awk 'BEGIN { FS=" " } ; { print $2 }'`
+refresh=`echo -e "${tmp}" | awk 'BEGIN { FS=" "} ; { print $3 }'`
+retry=`echo -e "${tmp}" | awk 'BEGIN { FS=" " } ; { print $4 }'`
+expiry=`echo -e "${tmp}" | awk 'BEGIN { FS=" "} ; { print $5 }'`
+negative=`echo -e "${tmp}" | awk 'BEGIN { FS=" " } ; { print $6 }'`
+
+buffer=$( cat "${zoneDirectory}/${domainName}" )
+
+dnsHosts=( $( echo -e "${buffer}" | grep -Eo -e "(IN)[[:blank:]]+(NS)[[:blank:]]+([a-z0-9]+\.)+[a-z]+\." | awk 'BEGIN { FS=" " } ; { print $3 }' ) )
+mxHosts=( $( echo -e "${buffer}" | grep -Eo -e "(IN)[[:blank:]]+(MX)[[:blank:]]+[0-9]+[[:blank:]]+([a-z0-9-]+\.)+[a-z]+" | awk 'BEGIN { FS=" " } ; { print $3" "$4" " } ') )
+aHosts=( $( echo -e "${buffer}" | grep -Eo -e "[a-z0-9-]+[[:blank:]]+(IN)[[:blank:]]+(A)[[:blank:]]+([0-9]+\.)+[0-9]+" | awk 'BEGIN { FS=" "} ; { print $1" "$4 }') )
+txtRecords=( $( echo -e "${buffer}" | grep -Eo -e "[-a-z0-9_\.]+[[:blank:]]+(IN)[[:blank:]]+(TXT)(\".+\")"))
+tmp=`regexpEscape "${domainName}"`
+info=`cat "${conf}/named.conf" | grep -Eo -e "(zone)[[:blank:]]+\"${tmp}\"[[:blank:]]+\{[[:blank:]]+(type)[[:blank:]]+(master|slave);[[:blank:]]+(file)[[:blank:]]+\"${zoneDirectory}/${tmp}\";[[:blank:]]+\};"`
+
+echo -e "${domainName}:"
+echo -e "\tFile:${zoneDirectory}/${domainName}"
+echo -e "\tDefault Zone TTL: ${defTTL}"
+echo -e "\tMaster DNS: ${masterDns}"
+echo -e "\tHostmaster mail: ${masterMail}"
+echo -e "\tSerial: ${serial}"
+echo -e "\tRefresh: ${refresh}"
+echo -e "\tRetry: ${retry}"
+echo -e "\tExpiry: ${expiry}"
+echo -e "\tNegative: ${negative}"
+echo -e "\tDNS servers: ${dnsHosts[@]}"
+echo -e "\tMail servers: ${mxHosts[@]}"
+echo -e "\tA servers: ${aHosts[@]}"
+echo -e "\tTXT records: ${txtRecords[@]}"

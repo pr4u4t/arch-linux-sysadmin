@@ -1,0 +1,10 @@
+[Unit]
+Description='ClamAV Milter'
+After=clamd.service
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/clamav-milter --config-file /etc/clamav/clamav-milter.conf
+
+[Install]
+WantedBy=multi-user.target

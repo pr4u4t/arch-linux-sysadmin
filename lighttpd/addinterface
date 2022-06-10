@@ -1,0 +1,69 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Add lighttpd listen socket to interface -iface with optional listen port -port"
+	echo -e "Arguments:"
+	echo -e "-iface interface"
+	echo -e "-port [80]"
+	echo -e "fg: addinterface -iface enp5s3"
+	echo -e "fg: addinterface -iface wlp9s1 -port 8118"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; }
+ifaceName=`valueArg "iface"` || { scriptHelp; errorOut; }
+
+tmp=`regexpEscape "${ifaceName}"`
+tmp=`interfaceList | grep -Eo -e "^$tmp$"`
+if [ -z "${tmp}" ]; then
+	errorOut "Interface:${ifaceName} does not exist"
+fi
+
+ifaceIP=`interfaceIP "${ifaceName}"`
+if [ -z "${ifaceIP}" ]; then
+	errorOut "No ip found on interface: ${ifaceName}"
+fi
+
+#echo $ifaceIP
+#errorOut
+
+owner=`getVariable "${sdir}/conf" "USER" "custom" "[A-Za-z]+[A-Za-z0-9]+"` || errorOut "Failed to get lighttpd owner user"
+group=`getVariable "${sdir}/conf" "GROUP" "custom" "[A-Za-z]+[A-Za-z0-9]+"` || errorOut "Failed to get lighttpd group user"
+lightConf=`getVariable "${sdir}/conf" "LIGHTTPD_CONF" "path"` || errorOut "Failed to get lighttpd configuration location"
+
+checkDir "${lightConf}/listen.d" &> /dev/null || errorOut "Missing listen.d directory in ${lightConf}"
+checkRead "${lightConf}/listen.d/${ifaceName}" &> /dev/null && errorOut "Interface file:${lightConf}/listen.d/${ifaceName} already exist"
+
+if [ "$(ls -A "${lightConf}/listen.d")" ]; then
+	tmp=`regexpEscape "${ifaceIP}"`
+	if [ ! -z "$(grep -rE -e "${tmp}" -f ${lightConf}/listen.d/* )" ]; then
+		errorOut "Address already in use"
+	fi
+fi
+
+if [ ! -z "$( cat "${lightConf}/lighttpd.conf" | grep -Eo -e "(include)[[:blank:]]+\"listen.d/${ifaceName}.conf\"" )" ]; then
+	errorOut "Interface file ${lightConf}/listen.d/${ifaceName}.conf already included in ${lightConf}/lighttpd.conf"
+fi
+
+copy "${sdir}/interface.conf.tpl" "${lightConf}/listen.d/${ifaceName}.conf" || errorOut "Failed to copy listen skeleton to ${lightConf}/listen.d/${ifaceName}.conf"
+setVariable "${lightConf}/listen.d/${ifaceName}.conf" "SERVER_ADDRESS" "${ifaceIP}" || errorOut "Failed to set server address to ${ifaceIP} in ${lightConf}/listen.d/${ifaceName}.conf"
+setVariable "${lightConf}/listen.d/${ifaceName}.conf" "SERVER_PORT" "80" || errorOut "Failed to set server port to 80 in ${lightConf}/listen.d/${ifaceName}.conf"
+touchFile "${lightConf}/listen.d/${ifaceName}.conf" "${owner}" "${group}" || errorOut "Failed to chown ${lightConf}/listen.d/${ifaceName}.conf to ${owner}:${group}"
+appendFile "${lightConf}/lighttpd.conf" "include \"listen.d/${ifaceName}.conf\"" || errorOut "Failed to append include include/${iface}.conf to ${lightConf}/lighttpd.conf"
+touchFile "${lightConf}/lighttpd.conf" "${owner}" "${group}" || errorOut "Failed to chown ${lightConf}/lighttpd.conf to ${owner}:${group}"

@@ -1,0 +1,75 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Initialize Lighttpd"
+	echo -e "fg: init"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg "$@"
+hasArg h && { scriptHelp; errorOut; }
+
+checkRead "${sdir}/conf" || errorOut "Failed to read ${sdir}/conf"
+
+lightHome=`getVariable "${sdir}/conf" "HOME" "path"` || errorOut "Failed to get lighttpd home directory"
+lightConf=`getVariable "${sdir}/conf" "LIGHTTPD_CONF" "path"` || errorOut "Failed to get lighttpd configuration directory"
+user=`getVariable "${sdir}/conf" "USER" "custom" "[A-Za-z]+[A-Za-z0-9]+"` || errorOut "Failed to get lighttpd owner user"
+group=`getVariable "${sdir}/conf" "GROUP" "custom" "[A-Za-z]+[A-Za-z0-9]+"` || errorOut "Failed to get lighttpd group user"
+errorLog=`getVariable "${sdir}/conf" "ERRLOG" "path"` || errorOut "Failed to get lighttpd error log location"
+port=`getVariable "${sdir}/conf" "PORT" "port"` || errorOut "Failed to get lighttpd server port"
+dirList=`getVariable "${sdir}/conf" "DIR_LIST" "custom" "((enable)|(disable))"` || errorOut "Failed to get dir listing priority"
+cmime=`getVariable "${sdir}/conf" "MIMETYPE" "custom" "((yes)|(no))"` || errorOut "Failed to get mimetypes configuration policy"
+cphp=`getVariable "${sdir}/conf" "PHP" "custom" "((yes)|(no))"` || errorOut "Failed to get php configuration policy"
+addr=`getVariable "${sdir}/conf" "SERVER_ADDRESS" "ip"` #??
+
+emptyDir "${lightConf}/conf.d" || errorOut "Failed to empty directory ${lightConf}/conf.d"
+emptyDir "${lightConf}/host.d" || errorOut "Failed to empty ${lightConf}/host.d"
+emptyDir "${lightConf}/listen.d" || errorOut "Failed to empty ${lightConf}/listen.d"
+emptyDir "${lightConf}" || errorOut "Failed to empty ${lightConf} "
+
+touchDirectory "${lightConf}" "${user}" "${group}" "rwx" "rwx" || errorOut "Failed to change permissions on ${lightConf}"
+touchDirectory "${lightConf}/conf.d" "${user}" "${group}" "rwx" "rwx" || errorOut "Failed to change permissions on ${lightConf}/conf.d"
+touchDirectory "${lightConf}/host.d" "${user}" "${group}" "rwx" "rwx" || errorOut "Failed to chnage permissions on ${lightConf}/host.d"
+touchDirectory "${lightConf}/listen.d" "${user}" "${group}" "rwx" "rwx" || errorOut "Failed to chnage permissions on ${lightConf}/listen.d"
+
+checkRead "${sdir}/lighttpd.conf.tpl" || errorOut "Failed to read ${sdir}/lighttpd.conf.tpl"
+
+copy "${sdir}/lighttpd.conf.tpl" "${lightConf}/lighttpd.conf" || errorOut "Failed to copy ${sdir}/lighttpd.conf.tpl to ${lightConf}/lighttpd.conf"
+setVariable "${lightConf}/lighttpd.conf" "PORT" "${port}" || errorOut "Failed to set PORT to {port} in ${lightConf}/lighttpd.conf"
+setVariable "${lightConf}/lighttpd.conf" "USER" "${user}" || errorOut "Failed to set USER to ${user} in ${lightConf}/lighttpd.conf"
+setVariable "${lightConf}/lighttpd.conf" "GROUP" "${group}" || errorOut "Failed to set GROUP to ${group} in ${lightConf}/lighttpd.conf"
+setVariable "${lightConf}/lighttpd.conf" "HOME" "${lightHome}" || errorOut "Failed to set HOME to ${lightHome} in ${lightConf}/lighttpd.conf"
+setVariable "${lightConf}/lighttpd.conf" "ERRLOG" "${errorLog}" || errorOut "Failed to set ERRLOG to ${errorLog} in ${lightConf}/lighttpd.conf"
+setVariable "${lightConf}/lighttpd.conf" "DIR_LIST" "${dirList}" || errorOut "Failed to set DIR_LIST to ${dirList} in ${lightConf}/lighttpd.conf"
+setVariable "${lightConf}/lighttpd.conf" "SERVER_ADDRESS" "${addr}" || errorOut "Failed to set SERVER_ADDRESS to ${addr} in ${lightConf}/lighttpd.conf"
+
+touchDirectory "${lightHome}" "${user}" "${group}" "rwx" "-" "-" || errorOut "Failed to change permissions on directory ${lightHome} to ${user}:${group}"
+changeHome "${user}" "${lightHome}" || errorOut "Failed to change lighttpd home directory to ${lightHome}"
+
+if [ "${cphp}" == "yes" ]; then
+	copy "${sdir}/php-fcgi.conf.tpl" "${lightConf}/conf.d/phpfcgi.conf" || errorOut "Failed to copy ${sdir}/php-fcgi.conf.tpl to ${lightConf}/conf.d/phpfcgi.conf"
+	appendFile "${lightConf}/lighttpd.conf" "include \"conf.d/phpfcgi.conf\"" || errorOut "Failed to append php configuration to ${lightConf}/lighttpd.conf"
+fi
+
+if [ "${cmime}" == "yes" ]; then
+	copy "${sdir}/mime-type.conf.tpl" "${lightConf}/conf.d/mimetype.conf" || errorOut "Failed to copy ${sdir}/mime-type.conf.tpl to ${lightConf}/conf.d/mimetype.conf"
+	appendFile "${lightConf}/lighttpd.conf" "include \"conf.d/mimetype.conf\"" || errorOut "Failed to append mimetype configuration to ${lightConf}/lighttpd.conf"
+fi
+
+touchFile "${lightConf}/lighttpd.conf" "${owner}" "${group}" || errorOut "Failed to set permissions on ${lightConf}/lighttpd.conf"
+copy "${sdir}/php.ini" "/etc/php" || errorOut "Failed to copy ${sdir}/php.ini to /etc/php"

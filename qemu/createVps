@@ -1,0 +1,77 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Create new VPS with parameters spcified by "
+	echo -e "Arguments:"
+	
+	echo -e "-net \"Bridge Device Driver\""
+
+	echo -e "-ram-size ram size in MB"
+	echo -e "-name vps named"
+	echo -e "-img-size disk size (MB|G)"
+}
+
+sdir=`scriptDir`
+
+source "${sdir}/../include/utils"
+initArg "${@}"
+sizeArg || { scriptHelp; errorOut "No arguments specified"; }
+hasArg h && { scriptHelp; errorOut "Help requested"; }
+
+owner=`getVariable "${sdir}/conf" "VPS_OWNER" "user"`
+path=`getVariable "${sdir}/conf" "VPS_PATH" "path"`
+
+ramSize=`valueArg ram-size` || { scriptHelp; errorOut "Ram size argument missing"; }
+name=`valueArg name` || { scriptHelp; errorOut "VPS name argument missing"; }
+imgSize=`valueArg img-size` || { scriptHelp; errorOut "Image size argument missing"; }
+
+for (( i=0; i < $( sizeArg "net" ) ; ++i))
+do
+	netArg=$( valueArg "net" "$i" ) || errorOut "Failed parsing net arguments"
+	netArg=( $( echo "${netArg}" ) )
+	
+	bridgeName=${netArg[0]}
+	devName=${netArg[1]}
+	driverName=${netArg[2]}
+	
+	#tmp=`regexpEscape "${bridgeName}"`
+	#interfaceList | grep -Eo -e "${tmp}" &> /dev/null || errorOut "Interface ${bridge} not found"
+
+	innerMac=`${sdir}/randomMac`
+	outerMac=`${sdir}/randomMac`
+
+	net="$net -net \"${bridgeName} ${devName} ${driverName} ${innerMac} ${outerMac}\""
+done
+
+#echo "$net"
+
+checkDir "${path}" &> /dev/null || errorOut "VPS base directory not found"
+checkDir "${path}/vm" &> /dev/null || errorOut "VPS vm directory not found"
+checkDir "${path}/vm/${name}" &> /dev/null && errorOut "VPS directory:${name} already exist"
+
+touchDirectory "${path}/vm/${name}" "${owner}" || errorOut "Failed to create vps:${name} directory"
+
+copy "${sdir}/VPS.tpl" "${path}/vm/${name}/${name}" || errorOut "Failed to copy ${sdir}/VPS.tpl to ${path}/vm/${name}/${name}"
+
+setVariable "${path}/vm/${name}/${name}" "PATH" "${path}" || errorOut "Failed to set variable PATH to ${path} in ${path}/vm/${name}/${name}"
+setVariable "${path}/vm/${name}/${name}" "RAM" "${ramSize}" || errorOut "Failed to set variable RAM to ${ramSize} in ${path}/vm/${name}/${name}"
+setVariable "${path}/vm/${name}/${name}" "NAME" "${name}" || errorOut "Failed to set variable NAME to ${name} in ${path}/vm/${name}/${name}"
+setVariable "${path}/vm/${name}/${name}" "NET" "${net}" || errorOut "Failed to set variable NET to ${net} in ${path}/vm/${name}/${name}"
+
+chmod +x "${path}/vm/${name}/${name}" || errorOut "Failed to add execute permission on ${path}/vm/${name}/${name}"
+
+createImage "${imgSize}" "${path}/vm/${name}/${name}.img" &> /dev/null || errorOut "Failed to create disk image of size ${imgSize} at ${path}/vm/${name}/${name}.img"

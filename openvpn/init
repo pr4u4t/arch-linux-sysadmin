@@ -1,0 +1,128 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Create openvpn server or client profile"
+	echo -e "Arguments:"
+	echo -e "-name vpn name"
+	echo -e "-type (client|server)"
+	echo -e "-cert certificate only if client"
+	echo -e "-key private key only if client"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg "$@"
+hasArg "h" && { scriptHelp; errorOut; }
+
+name=`valueArg "name"` || { scriptHelp; errorOut; }
+vpntype=`valueArg "type"` || { scriptHelp; errorOut; }
+cert=`valueArg "cert"` || { [[ $vpntype == "client" ]] && errorOut "Certificate required for client"; }
+key=`valueArg "key"` || { scriptHelp; errorOut; }
+
+checkRead "${sdir}/conf" || errorOut "Configuration file ${sdir}/conf doesnt exist or not readable"
+
+if [[ "$vpntype" != "server" && "$vpntype" != "client"  ]]; then
+	echo -e "Invalid type option $vpntype should be: client|server "
+	exit 4
+fi
+
+path=`getVariable "${sdir}/conf" "PATH" "path"` || errorOut "Failed to obtain openvpn configuration path"
+protocol=`getVariable "${sdir}/conf" "PROTOCOL" "custom" "((tcp)|(udp))"` || errorOut "Failed to obtain protocol"
+compress=`getVariable "${sdir}/conf" "COMPRESS" "custom" "((yes)|(no))"` || errorOut "Failed to obtain compression algorith"
+dhfile=`getVariable "${sdir}/conf" "DH_FILE" "path"` || errorOut "Failed to obtain diffie hellman key path"
+cipher=`getVariable "${sdir}/conf" "CIPHER" "custom" "[A-Za-z-]+"` || errorOut "Failed to obtain cipher algorithm"
+devtype=`getVariable "${sdir}/conf" "DEV_TYPE" "custom" "[A-Za-z0-9]+"` || errorOut "Failed to obtain device type"
+
+if [ "$vpntype" == "server" ]; then
+
+	checkRead "${path}/${name}.conf" &> /dev/null && errorOut "Configuration file ${path}/${name}.conf already exist"
+	checkWrite "${path}" || errorOut "path: $path is not writeable"
+
+	caFile=`getVariable "${sdir}/conf" "CA_FILE" "path"` || errorOut "Failed to obtain CA file location"
+	mode=`getVariable "${sdir}/conf" "MODE" "custom" "[A-Za-z]+"` || errorOut "Failed to obtain mode"
+	localAddress=`getVariable "${sdir}/conf" "LOCAL_ADDRESS" "custom" "[A-Za-z0-9\.]+"` || errorOut "Failed to obtain local address"
+	localPort=`getVariable "${sdir}/conf" "LOCAL_PORT" "port"` || errorOut "Failed to obtain local port"
+	serverCrt=`getVariable "${sdir}/conf" "SERVER_CERT" "path"` || errorOut "Failed to obtain certificate"
+	serverKey=`getVariable "${sdir}/conf" "SERVER_KEY" "path"` || errorOut "Failed to obtain private key"
+	keepPing=`getVariable "${sdir}/conf" "KEEP_ALIVE_PING" "integer"` || errorOut "Failed to obtain ping interval"
+	keepTimeout=`getVariable "${sdir}/conf" "KEEP_ALIVE_TIMEOUT" "integer"` || errorOut "Failed to obtain client timeout"
+
+	copy "${sdir}/server.conf.tpl" "${path}/${name}.conf" || errorOut "Failed to copy ${sdir}/server.conf.tpl --> ${path}/${name}.conf"
+	copy "${sdir}/${caFile}" "${path}/${caFile}" || errorOut "Failed to copy ${sdir}/${caFile} --> ${path}/${caFile}"
+	copy "${sdir}/${dhfile}" "${path}/${dhfile}" || errorOut "Failed to copy ${sdir}/${dhfile} --> ${path}/${dhfile}"
+	copy "${sdir}/${serverCrt}" "${path}/${serverCrt}" || errorOut "Failed to copy ${sdir}/${serverCrt} --> ${path}/${serverCrt}"
+	copy "${sdir}/${serverKey}" "${path}/${serverKey}" || errorOut "Failed to copy ${sdir}/${serverKey} --> ${path}/${serverKey}" 
+
+	setVariable "${path}/${name}.conf" PROTOCOL "${protocol}" || errorOut "Failed to set protocol in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" COMPRESS "${compress}" || errorOut "Failed to set compression algorithm in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" DH_FILE "${dhfile}" || errorOut "Failed to set diffie hellman key in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" CIPHER "${cipher}" || errorOut "Failed to set cipher type in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" DEV_TYPE "${devtype}" || errorOut "Failed to set device type in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" CA_FILE "${caFile}" || errorOut "Failed to set CA file in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" MODE "${mode}" || errorOut "Failed to set local mode in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" LOCAL_ADDRESS "${localAddress}" || errorOut "Failed to set local address in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" LOCAL_PORT "${localPort}" || errorOut "Failed to set local port in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" CERT_FILE "${serverCrt}" || errorOut "Failed to set server certificate in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" KEY_FILE "${serverKey}" || errorOut "Failed to set server key in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" KEEP_PING "${keepPing}" || errorOut "Failed to set ping interval in ${path}/${name}.conf"
+	setVariable "${path}/${name}.conf" KEEP_TIMEOUT "${keepTimeout}" || errorOut "Failed to set client timeout in ${path}/${name}.conf"
+fi
+
+if [ "$vpntype" == "client" ]; then
+	
+	#checkWrite "${sdir}/ccd" || errorOut "Configuration directory ${sdir}/ccd does not exist or not readable"
+	touchDirectory "${sdir}/ccd" "sysadmin" > /dev/null || errorOut "Failed to create client configuration directory"
+	
+	checkDir "${sdir}/ccd/${name}" > /dev/null && errorOut "Client ${name} directory already exists"
+	checkRead "${sdir}/ccd/${name}/client.conf" > /dev/null && errorOut "Configuration file ${sdir}/ccd/${name}/client.conf already exist"
+
+	checkRead "${cert}" > /dev/null || errorOut "Failed to read client certificate"
+	checkRead "${key}" > /dev/null || errorOut "Failed to read client private key"
+
+	caFile=`getVariable "${sdir}/conf" "CA_FILE" "path"` || errorOut "Failed to obtain CA file location"
+	remoteAddr=`getVariable "${sdir}/conf" "REMOTE_ADDR" "custom" "[A-Za-z0-9\.]+"` || errorOut "Failed to get remote address"
+	remotePort=`getVariable "${sdir}/conf" "REMOTE_PORT" "port"` || errorOut "Failed to get remote port"
+	#cert=`getVariable "${sdir}/conf" "CERT" "path"` || errorOut "Failed to get certificate file path"
+
+	mac="$( "${sdir}/../qemu/randomMac" )" || errorOut "Failed to generate random mac address"
+	if [ "${#mac}" != 17 ]; then
+		errorOut "Invalid mac address value"
+	fi
+
+	checkRead "${sdir}/client.conf.tpl" || errorOut "Failed to read ${sdir}/client.conf"
+	touchDirectory "${sdir}/ccd/${name}" "sysadmin" || errorOut "Failed to create client configuration directory"
+
+	copy "${sdir}/${caFile}" "${sdir}/ccd/${name}/"
+	copy "${cert}" "${sdir}/ccd/${name}" || errorOut "Failed to copy client certificate"
+	copy "${key}" "${sdir}/ccd/${name}" || errorOut "Failed to copy client private key"
+	copy "${sdir}/client.conf.tpl" "${sdir}/ccd/${name}/client.conf" || errorOut "Failed to copy ${sdir}/client.conf.tpl template to ${sdir}/ccd/${name}/client.conf"
+	
+	setVariable "${sdir}/ccd/${name}/client.conf" "PROTOCOL" "${protocol}" || errorOut "Failed to set protocol file in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "COMPRESS" "${compress}" || errorOut "Failed to set compression algorithm file in ${sdir}/ccd/${name}/client.conf"
+	#setVariable "${sdir}/ccd/${name}/client.conf" "DH_FILE" "${dhfile}" || errorOut "Failed to set diffie hellman file in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "CIPHER" "${cipher}" || errorOut "Failed to set cipher algorithm in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "DEV_TYPE" "${devtype}" || errorOut "Failed to set device type in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "REMOTE_ADDR" "${remoteAddr}" || errorOut "Failed to set remote address in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "REMOTE_PORT" "${remotePort}" || errorOut "Failed to set remote port in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "CERT_FILE" "${cert}" || errorOut "Failed to set certificate file in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "KEY_FILE" "${key}" || errorOut "Failed to set private key file in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "MAC_ADDR" "${mac}" || errorOut "Failed to set mac address in ${sdir}/ccd/${name}/client.conf"
+	setVariable "${sdir}/ccd/${name}/client.conf" "CA_FILE" "${caFile}" || errorOut "Failed to set ca file in ${sdir}/ccd/${name}/client.conf"
+
+	tar -cf "${sdir}/ccd/${name}.tar" -C "${sdir}/ccd/${name}" . || errorOut "Failed to tar client profile"
+	bzip2 --compress --best "${sdir}/ccd/${name}.tar" || errorOut "Failed to bzip client profile"
+fi

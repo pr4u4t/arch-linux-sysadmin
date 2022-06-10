@@ -1,0 +1,51 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+	echo -e "Initialize git repository"
+	echo -e "-type (server|local|remote|subupdate)"
+	echo -e "-url only if local address of repository to download"
+	echo -e "-dir only if server where to initialize bare repository"
+}
+
+sdir=`scriptDir`
+
+source "${sdir}/../include/utils"
+initArg $@
+
+#socksPort=`getVariable "${sdir}/conf" "SOCKS_PORT" "ipport" || errorOut`
+#setVariable "${torConf}/torrc" "TRANS_PORT" "${transPort}" || errorOut
+
+rtype=`valueArg "type"` || errorOut "Repository type argument missing"
+url=`valueArg "url"` || { [[ "${rtype}" == "local" || "${rtype}" == "remote" ]] && errorOut "No repository url specified"; }
+tdir=`valueArg "directory"` || errorOut "Target directory missing"
+
+if [[ "${rtype}" == "server" ]]; then
+	git init --bare "${tdir}" || errorOut "Failed to initialize bare repository in ${tdir}"
+fi
+
+if [[ "${rtype}" == "local" ]]; then
+	git clone "${url}" "${tdir}" || errorOut "Failed to clone ${url} into ${tdir}"
+fi
+
+if [[ "${rtype}" == "remote" ]]; then
+	git remote add origin "${url}"
+	git push --set-upstream origin master
+fi
+
+if [[ "${rtype}" == "subupdate" ]]; then
+	git submodule update --remote --recursive "${tdir}"
+fi

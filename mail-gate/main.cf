@@ -1,0 +1,47 @@
+#inet_interfaces = 1.1.1.1
+mydestination =
+myorigin = $myhostname
+local_recipient_maps =
+local_transport = error:no local delivery
+
+parent_domain_matches_subdomains = debug_peer_list smtpd_access_maps
+
+# this file contains the list to relay for
+relay_domains = proxy:${MAIL_DB_ENGINE}:${POSTFIX_DIR}/relay_domains_maps.cf
+
+# list of addresses/domains to accept mail for
+relay_recipient_maps = proxy:${MAIL_DB_ENGINE}:${POSTFIX_DIR}/relay_recipients_maps.cf
+
+# Where to send mail for addresses/domains
+transport_maps = proxy:${MAIL_DB_ENGINE}:${POSTFIX_DIR}/relay_transports_maps.cf
+
+smtpd_sender_login_maps = proxy:${MAIL_DB_ENGINE}:${POSTFIX_DIR}/virtual_sender_login_maps.cf
+ 
+# virtual_alias_maps = cdb:/etc/postfix/virtual
+
+smtpd_relay_restrictions = 	permit_sasl_authenticated,
+				reject_unauth_destination
+
+smtpd_recipient_restrictions =  permit_sasl_authenticated,
+				reject_unauth_destination
+
+smtpd_sender_restrictions =	reject_known_sender_login_mismatch,
+                                reject_sender_login_mismatch,
+                                reject_unauthenticated_sender_login_mismatch,
+                                permit
+
+smtpd_sasl_auth_enable = yes 
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = /var/run/dovecot/auth-client
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_tls_security_options = $smtpd_sasl_security_options
+smtpd_use_tls = yes 
+smtpd_tls_security_level = may 
+smtpd_tls_auth_only = yes 
+smtpd_tls_received_header = yes 
+smtpd_tls_cert_file = /etc/ssl/private/vmail.crt
+smtpd_tls_key_file = /etc/ssl/private/vmail.key
+smtpd_sasl_local_domain = $mydomain
+broken_sasl_auth_clients = yes 
+smtpd_tls_loglevel = 1
+inet_protocols = ipv4

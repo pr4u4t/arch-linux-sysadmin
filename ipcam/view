@@ -1,0 +1,43 @@
+#!/bin/bash
+
+function scriptDir
+{
+        SOURCE="${BASH_SOURCE[0]}"
+
+        while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+                DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+                SOURCE="$(readlink "$SOURCE")"
+                 # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+                [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+        done
+        DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+        echo $DIR
+}
+
+function scriptHelp
+{
+        echo -e "View remote rtsp stream"
+        echo -e "Arguments:"
+        echo -e "-ip addr"
+        echo -e "-user user"
+        echo -e "-pass password"
+	echo -e "[ -path /stream.dsp ]"
+        echo -e "fg: view -ip 192.168.140.229 -user admin -pass password1"
+}
+
+sdir=`scriptDir`
+source "${sdir}/../include/utils"
+initArg $@
+sizeArg || { scriptHelp; errorOut; }
+hasArg h && { scriptHelp; errorOut; }
+
+ip=`valueArg "ip"` || errorOut "IP address missing" 
+user=`valueArg "user"`
+pass=`valueArg "pass"`
+path=`valueArg "path"`
+
+[[ -n "$user" && -n "$pass" ]] && prefix="$user:$pass@"
+
+ffplay "rtsp://$prefix$ip"
+
+#-vf "transpose=2,transpose=2" 
